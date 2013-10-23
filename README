@@ -1,0 +1,21 @@
+
+           OpenWFD - Open-Source WiFi-Display Implementation
+           =================================================
+
+OpenWFD is currently under heavy development. It is not ready to be used, yet.
+Stay tuned!
+
+For more information, please see:
+  http://www.freedesktop.org/wiki/Software/openwfd/
+
+The development git repository is available at:
+  http://cgit.freedesktop.org/~dvdhrm/openwfd/
+
+Contact
+=======
+
+  If you have questions about OpenWFD or want to contact the developers for
+  other reasons, please don't hesitate to email one of the maintainers.
+
+  Current maintainers:
+   - David Herrmann <dh.herrmann@gmail.com>
