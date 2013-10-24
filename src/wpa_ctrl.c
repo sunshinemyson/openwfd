@@ -315,6 +315,10 @@ static int read_ev(struct owfd_wpa_ctrl *wpa)
 			/* only handle event-msgs ('<') on ev-socket */
 			if (wpa->cb && *buf == '<')
 				wpa->cb(wpa, buf, l, wpa->data);
+
+			/* exit if the callback closed the connection */
+			if (!owfd_wpa_ctrl_is_open(wpa))
+				return -ENODEV;
 		}
 	} while (l > 0);
 
