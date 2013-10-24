@@ -233,7 +233,7 @@ int owfd_wpa_ctrl_open(struct owfd_wpa_ctrl *wpa, const char *ctrl_path,
 {
 	int r;
 	char buf[10] = { 0 };
-	size_t len = 10;
+	size_t len = sizeof(buf);
 
 	if (owfd_wpa_ctrl_is_open(wpa))
 		return -EALREADY;
@@ -535,7 +535,7 @@ static int wpa_request(int fd, const void *cmd, size_t cmd_len,
 		       void *reply, size_t *reply_len, int64_t *t2)
 {
 	char buf[REQ_REPLY_MAX];
-	size_t l;
+	size_t l = REQ_REPLY_MAX;
 
 	int64_t *t, t1 = -1;
 	int r;
