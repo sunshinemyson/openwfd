@@ -32,6 +32,7 @@
 #include <string.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
+#include <sys/timerfd.h>
 #include <sys/types.h>
 #include <sys/un.h>
 #include <time.h>
@@ -49,6 +50,7 @@ struct owfd_wpa_ctrl {
 	unsigned long ref;
 	void *data;
 	int efd;
+	int tfd;
 
 	int req_fd;
 	char req_name[UNIX_PATH_MAX];
@@ -63,6 +65,7 @@ static int wpa_request(int fd, const void *cmd, size_t cmd_len,
 int owfd_wpa_ctrl_new(struct owfd_wpa_ctrl **out)
 {
 	struct owfd_wpa_ctrl *wpa;
+	struct epoll_event ev;
 	int r;
 
 	wpa = calloc(1, sizeof(*wpa));
@@ -70,6 +73,7 @@ int owfd_wpa_ctrl_new(struct owfd_wpa_ctrl **out)
 		return -ENOMEM;
 	wpa->ref = 1;
 	wpa->efd = -1;
+	wpa->tfd = -1;
 	wpa->req_fd = -1;
 	wpa->ev_fd = -1;
 
@@ -79,9 +83,29 @@ int owfd_wpa_ctrl_new(struct owfd_wpa_ctrl **out)
 		goto err_wpa;
 	}
 
+	wpa->tfd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
+	if (wpa->tfd < 0) {
+		r = -errno;
+		goto err_efd;
+	}
+
+	memset(&ev, 0, sizeof(ev));
+	ev.events = EPOLLHUP | EPOLLERR | EPOLLIN;
+	ev.data.ptr = &wpa->tfd;
+
+	r = epoll_ctl(wpa->efd, EPOLL_CTL_ADD, wpa->tfd, &ev);
+	if (r < 0) {
+		r = -errno;
+		goto err_tfd;
+	}
+
 	*out = wpa;
 	return 0;
 
+err_tfd:
+	close(wpa->tfd);
+err_efd:
+	close(wpa->efd);
 err_wpa:
 	free(wpa);
 	return r;
@@ -101,6 +125,7 @@ void owfd_wpa_ctrl_unref(struct owfd_wpa_ctrl *wpa)
 		return;
 
 	owfd_wpa_ctrl_close(wpa);
+	close(wpa->tfd);
 	close(wpa->efd);
 	free(wpa);
 }
@@ -228,6 +253,27 @@ static void close_socket(struct owfd_wpa_ctrl *wpa, int fd, char *name)
 	close(fd);
 }
 
+static int arm_timer(struct owfd_wpa_ctrl *wpa, int64_t usecs)
+{
+	struct itimerspec spec;
+	int r;
+
+	spec.it_value.tv_sec = usecs / 1000000LL;
+	spec.it_value.tv_nsec = (usecs % 1000000LL) * 1000LL;
+	spec.it_interval = spec.it_value;
+
+	r = timerfd_settime(wpa->tfd, 0, &spec, NULL);
+	if (r < 0)
+		return -errno;
+
+	return 0;
+}
+
+static void disarm_timer(struct owfd_wpa_ctrl *wpa)
+{
+	arm_timer(wpa, 0);
+}
+
 int owfd_wpa_ctrl_open(struct owfd_wpa_ctrl *wpa, const char *ctrl_path,
 		       owfd_wpa_ctrl_cb cb)
 {
@@ -238,9 +284,16 @@ int owfd_wpa_ctrl_open(struct owfd_wpa_ctrl *wpa, const char *ctrl_path,
 	if (owfd_wpa_ctrl_is_open(wpa))
 		return -EALREADY;
 
+	/* 10s PING timer for timeouts */
+	r = arm_timer(wpa, 10000000LL);
+	if (r < 0)
+		return r;
+
 	wpa->req_fd = open_socket(wpa, ctrl_path, &wpa->req_fd, wpa->req_name);
-	if (wpa->req_fd < 0)
-		return wpa->req_fd;
+	if (wpa->req_fd < 0) {
+		r = wpa->req_fd;
+		goto err_timer;
+	}
 
 	wpa->ev_fd = open_socket(wpa, ctrl_path, &wpa->ev_fd, wpa->ev_name);
 	if (wpa->ev_fd < 0) {
@@ -266,6 +319,8 @@ err_ev:
 err_req:
 	close_socket(wpa, wpa->req_fd, wpa->req_name);
 	wpa->req_fd = -1;
+err_timer:
+	disarm_timer(wpa);
 	return r;
 }
 
@@ -282,6 +337,7 @@ void owfd_wpa_ctrl_close(struct owfd_wpa_ctrl *wpa)
 	close_socket(wpa, wpa->req_fd, wpa->req_name);
 	wpa->req_fd = -1;
 
+	disarm_timer(wpa);
 	wpa->cb = NULL;
 }
 
@@ -382,6 +438,55 @@ static int dispatch_req(struct owfd_wpa_ctrl *wpa, const struct epoll_event *e)
 	return 0;
 }
 
+static int read_tfd(struct owfd_wpa_ctrl *wpa)
+{
+	ssize_t l;
+	uint64_t exp;
+	int r;
+	char buf[10];
+	size_t len = sizeof(buf);
+
+	/* Send PING request if the timer expires. If the wpa_supplicant
+	 * doesn't respond in a timely manner, return an error. */
+
+	l = read(wpa->tfd, &exp, sizeof(exp));
+	if (l < 0 && errno != EAGAIN && errno != EINTR) {
+		return -errno;
+	} else if (l == sizeof(exp)) {
+		r = wpa_request(wpa->req_fd, "PING", 4, buf, &len, NULL);
+		if (r < 0)
+			return r;
+		if (len != 5 || strncmp(buf, "PONG\n", 5))
+			return -ETIMEDOUT;
+	}
+
+	return 0;
+}
+
+static int dispatch_tfd(struct owfd_wpa_ctrl *wpa, const struct epoll_event *e)
+{
+	int r = 0;
+
+	/* Remove tfd from epoll-set on HUP/ERR. This shouldn't happen, but if
+	 * it does, just stop receiving events from it. */
+	if (e->events & (EPOLLHUP | EPOLLERR)) {
+		r = -EFAULT;
+		goto error;
+	}
+
+	if (e->events & (EPOLLIN)) {
+		r = read_tfd(wpa);
+		if (r < 0)
+			goto error;
+	}
+
+	return 0;
+
+error:
+	epoll_ctl(wpa->efd, EPOLL_CTL_DEL, wpa->tfd, NULL);
+	return r;
+}
+
 int owfd_wpa_ctrl_dispatch(struct owfd_wpa_ctrl *wpa, int timeout)
 {
 	struct epoll_event ev[2], *e;
@@ -407,6 +512,8 @@ int owfd_wpa_ctrl_dispatch(struct owfd_wpa_ctrl *wpa, int timeout)
 			r = dispatch_ev(wpa, e);
 		else if (e->data.ptr == &wpa->req_fd)
 			r = dispatch_req(wpa, e);
+		else if (e->data.ptr == &wpa->tfd)
+			r = dispatch_tfd(wpa, e);
 
 		if (r < 0)
 			break;
