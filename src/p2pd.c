@@ -24,11 +24,13 @@
  */
 
 #include <errno.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/epoll.h>
+#include <sys/signalfd.h>
 #include <unistd.h>
 #include "p2pd.h"
 #include "shl_log.h"
@@ -37,15 +39,127 @@
 struct owfd_p2pd {
 	struct owfd_p2pd_config config;
 	int efd;
+	int sfd;
 };
+
+int owfd_p2pd_ep_add(int efd, int *fd, unsigned int events)
+{
+	struct epoll_event ev;
+	int r;
+
+	memset(&ev, 0, sizeof(ev));
+	ev.data.ptr = fd;
+	ev.events = events;
+
+	r = epoll_ctl(efd, EPOLL_CTL_ADD, *fd, &ev);
+	if (r < 0)
+		return log_ERRNO();
+
+	return 0;
+}
+
+void owfd_p2pd_ep_update(int efd, int *fd, unsigned int events)
+{
+	struct epoll_event ev;
+	int r;
+
+	memset(&ev, 0, sizeof(ev));
+	ev.data.ptr = fd;
+	ev.events = events;
+
+	r = epoll_ctl(efd, EPOLL_CTL_MOD, *fd, &ev);
+	if (r < 0)
+		log_vERRNO();
+}
+
+void owfd_p2pd_ep_remove(int efd, int fd)
+{
+	int r;
+
+	r = epoll_ctl(efd, EPOLL_CTL_DEL, fd, NULL);
+	if (r < 0)
+		log_vERRNO();
+}
+
+static int owfd_p2pd_dispatch_sfd(struct owfd_p2pd *p2pd,
+				  struct owfd_p2pd_ep *ep)
+{
+	ssize_t l;
+	struct signalfd_siginfo info;
+
+	if (ep->ev->data.ptr != &p2pd->sfd)
+		return OWFD_P2PD_EP_NOT_HANDLED;
+
+	if (ep->ev->events & (EPOLLHUP | EPOLLERR))
+		return log_EPIPE();
+
+	l = read(p2pd->sfd, &info, sizeof(info));
+	if (l < 0)
+		return log_ERRNO();
+	else if (l != sizeof(info))
+		return OWFD_P2PD_EP_NOT_HANDLED;
+
+	log_notice("received signal %d: %s",
+		   info.ssi_signo, strsignal(info.ssi_signo));
+
+	return OWFD_P2PD_EP_QUIT;
+}
+
+static int owfd_p2pd_dispatch(struct owfd_p2pd *p2pd)
+{
+	struct epoll_event evs[64];
+	const size_t max = sizeof(evs) / sizeof(*evs);
+	struct owfd_p2pd_ep ep;
+	int i, n, r;
+
+	n = epoll_wait(p2pd->efd, evs, max, -1);
+	if (n < 0) {
+		if (errno == EAGAIN || errno == EINTR)
+			return 0;
+		else
+			return log_ERRNO();
+	} else if (n > max) {
+		n = max;
+	}
+
+	ep.evs = evs;
+	ep.num = n;
+	for (i = 0; i < n; ++i) {
+		ep.ev = &ep.evs[i];
+		if (!ep.ev->data.ptr)
+			continue;
+
+		r = owfd_p2pd_dispatch_sfd(p2pd, &ep);
+		if (r < 0)
+			break;
+		else if (r == OWFD_P2PD_EP_HANDLED)
+			continue;
+		else if (r == OWFD_P2PD_EP_QUIT)
+			break;
+	}
+
+	return r;
+}
 
 static int owfd_p2pd_run(struct owfd_p2pd *p2pd)
 {
+	int r;
+
+	while (1) {
+		r = owfd_p2pd_dispatch(p2pd);
+		if (r < 0)
+			return r;
+		else if (r == OWFD_P2PD_EP_QUIT)
+			break;
+	}
+
 	return 0;
 }
 
 static void owfd_p2pd_teardown(struct owfd_p2pd *p2pd)
 {
+	if (p2pd->sfd >= 0)
+		close(p2pd->sfd);
 	if (p2pd->efd >= 0)
 		close(p2pd->efd);
 }
@@ -53,12 +167,39 @@ static void owfd_p2pd_teardown(struct owfd_p2pd *p2pd)
 static int owfd_p2pd_setup(struct owfd_p2pd *p2pd)
 {
 	int r;
+	sigset_t mask;
 
 	p2pd->efd = epoll_create1(EPOLL_CLOEXEC);
 	if (p2pd->efd < 0) {
 		r = log_ERRNO();
 		goto error;
 	}
+
+	sigemptyset(&mask);
+	sigaddset(&mask, SIGINT);
+	sigaddset(&mask, SIGTERM);
+	sigaddset(&mask, SIGQUIT);
+	sigaddset(&mask, SIGHUP);
+	sigaddset(&mask, SIGCHLD);
+	sigaddset(&mask, SIGPIPE);
+
+	r = sigprocmask(SIG_BLOCK, &mask, NULL);
+	if (r < 0) {
+		r = log_ERRNO();
+		goto error;
+	}
+
+	sigdelset(&mask, SIGPIPE);
+
+	p2pd->sfd = signalfd(-1, &mask, SFD_CLOEXEC | SFD_NONBLOCK);
+	if (p2pd->sfd < 0) {
+		r = log_ERRNO();
+		goto error;
+	}
+
+	r = owfd_p2pd_ep_add(p2pd->efd, &p2pd->sfd, EPOLLIN);
+	if (r < 0)
+		goto error;
 
 	return 0;
 
@@ -74,6 +215,7 @@ int main(int argc, char **argv)
 
 	memset(&p2pd, 0, sizeof(p2pd));
 	p2pd.efd = -1;
+	p2pd.sfd = -1;
 	owfd_p2pd_init_config(&p2pd.config);
 
 	r = owfd_p2pd_parse_argv(&p2pd.config, argc, argv);

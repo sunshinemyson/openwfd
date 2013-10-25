@@ -28,10 +28,13 @@
 
 #include <stdbool.h>
 #include <stdlib.h>
+#include <sys/epoll.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* config handling */
 
 struct owfd_p2pd_config {
 	unsigned int verbose : 1;
@@ -42,6 +45,24 @@ struct owfd_p2pd_config {
 void owfd_p2pd_init_config(struct owfd_p2pd_config *conf);
 void owfd_p2pd_clear_config(struct owfd_p2pd_config *conf);
 int owfd_p2pd_parse_argv(struct owfd_p2pd_config *conf, int argc, char **argv);
+
+/* main */
+
+enum owfd_p2pd_ep_action {
+	OWFD_P2PD_EP_HANDLED,
+	OWFD_P2PD_EP_NOT_HANDLED,
+	OWFD_P2PD_EP_QUIT,
+};
+
+struct owfd_p2pd_ep {
+	struct epoll_event *ev;
+	struct epoll_event *evs;
+	size_t num;
+};
+
+int owfd_p2pd_ep_add(int efd, int *fd, unsigned int events);
+void owfd_p2pd_ep_update(int efd, int *fd, unsigned int events);
+void owfd_p2pd_ep_remove(int efd, int fd);
 
 #ifdef __cplusplus
 }

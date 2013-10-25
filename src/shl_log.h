@@ -177,6 +177,11 @@ extern const char *LOG_SUBSYSTEM;
 #define log_vENOMEM() \
 	((void)log_ENOMEM())
 
+#define log_EPIPE() \
+	(log_error("fd closed unexpectedly"), -EPIPE)
+#define log_vEPIPE() \
+	((void)log_EPIPE())
+
 #define log_ERRNO() \
 	(log_error("syscall failed (%d): %m", errno), -errno)
 #define log_vERRNO() \

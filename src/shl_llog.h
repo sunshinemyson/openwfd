@@ -216,6 +216,15 @@ void llog_dummyf(llog_submit_t llog, void *data, unsigned int sev,
 #define llog_vdENOMEM(obj, data) \
 	((void)llog_dENOMEM((obj), (data)))
 
+#define llog_dEPIPE(obj, data) \
+	(llog_derror((obj), (data), "fd closed unexpectedly"), -EPIPE)
+#define llog_EPIPE(obj) \
+	(llog_dEPIPE((obj)->llog, (obj)->llog_data))
+#define llog_vEPIPE(obj) \
+	((void)llog_EPIPE(obj))
+#define llog_vdEPIPE(obj, data) \
+	((void)llog_dEPIPE((obj), (data)))
+
 #define llog_dERRNO(obj, data) \
 	(llog_derror((obj), (data), "syscall failed (%d): %m", errno), -errno)
 #define llog_ERRNO(obj) \
