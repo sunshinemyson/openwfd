@@ -280,6 +280,7 @@ int owfd_wpa_ctrl_open(struct owfd_wpa_ctrl *wpa, const char *ctrl_path,
 	int r;
 	char buf[10] = { 0 };
 	size_t len = sizeof(buf);
+	int64_t t;
 
 	if (owfd_wpa_ctrl_is_open(wpa))
 		return -EALREADY;
@@ -313,7 +314,8 @@ int owfd_wpa_ctrl_open(struct owfd_wpa_ctrl *wpa, const char *ctrl_path,
 	return 0;
 
 err_ev:
-	owfd_wpa_ctrl_request(wpa, "DETACH", 6, NULL, NULL, -1);
+	t = 0;
+	wpa_request(wpa->ev_fd, "DETACH", 6, NULL, NULL, &t);
 	close_socket(wpa, wpa->ev_fd, wpa->ev_name);
 	wpa->ev_fd = -1;
 err_req:
@@ -326,10 +328,13 @@ err_timer:
 
 void owfd_wpa_ctrl_close(struct owfd_wpa_ctrl *wpa)
 {
+	int64_t t;
+
 	if (!owfd_wpa_ctrl_is_open(wpa))
 		return;
 
-	owfd_wpa_ctrl_request(wpa, "DETACH", 6, NULL, NULL, -1);
+	t = 0;
+	wpa_request(wpa->ev_fd, "DETACH", 6, NULL, NULL, &t);
 
 	close_socket(wpa, wpa->ev_fd, wpa->ev_name);
 	wpa->ev_fd = -1;
