@@ -271,7 +271,7 @@ static int fork_wpa(struct owfd_p2pd_interface *iface,
 	pid_t pid;
 	int r;
 	char *ctrl;
-	sigset_t mask, old;
+	sigset_t mask;
 
 	pid = fork();
 	if (pid < 0) {
