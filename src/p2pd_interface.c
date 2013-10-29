@@ -43,6 +43,7 @@
 
 struct owfd_p2pd_interface {
 	struct owfd_wpa_ctrl *wpa;
+	struct owfd_p2pd_config *config;
 	int wpa_fd;
 	pid_t pid;
 };
@@ -55,8 +56,7 @@ static void wpa_event(struct owfd_wpa_ctrl *wpa, void *buf,
  * environment for wpa_supplicant and then execve() it. This should not return.
  * If it does, exit(1) is called for this child.
  */
-static void run_child(struct owfd_p2pd_interface *iface,
-		      struct owfd_p2pd_config *config)
+static void run_child(struct owfd_p2pd_interface *iface)
 {
 	char *argv[64];
 	int i, r;
@@ -72,13 +72,13 @@ static void run_child(struct owfd_p2pd_interface *iface,
 
 	/* initialize wpa_supplicant args */
 	i = 0;
-	argv[i++] = config->wpa_binary;
+	argv[i++] = iface->config->wpa_binary;
 	argv[i++] = "-Dnl80211";
 	argv[i++] = "-qq";
 	argv[i++] = "-C";
-	argv[i++] = config->wpa_ctrldir;
+	argv[i++] = iface->config->wpa_ctrldir;
 	argv[i++] = "-i";
-	argv[i++] = config->interface;
+	argv[i++] = iface->config->interface;
 	argv[i] = NULL;
 
 	/* execute wpa_supplicant; if it fails, the caller issues exit(1) */
@@ -104,7 +104,6 @@ static bool is_child_alive(pid_t pid)
  * inotify-watch.
  */
 static int wait_for_wpa(struct owfd_p2pd_interface *iface,
-			struct owfd_p2pd_config *config,
 			const char *file, const sigset_t *mask)
 {
 	int fd, r, w;
@@ -124,7 +123,7 @@ static int wait_for_wpa(struct owfd_p2pd_interface *iface,
 	fds[0].events = POLLHUP | POLLERR | POLLIN;
 
 	/* add /run/wpa_supplicant watch */
-	w = inotify_add_watch(fd, config->wpa_ctrldir,
+	w = inotify_add_watch(fd, iface->config->wpa_ctrldir,
 			      IN_CREATE | IN_MOVED_TO | IN_ONLYDIR);
 	if (w < 0) {
 		r = log_ERRNO();
@@ -265,8 +264,7 @@ err_close:
  * connects the wpa_ctrl socket. If this returns (even with an error), you
  * _must_ call kill_wpa() to stop the wpa_supplicant process later.
  */
-static int fork_wpa(struct owfd_p2pd_interface *iface,
-		    struct owfd_p2pd_config *config)
+static int fork_wpa(struct owfd_p2pd_interface *iface)
 {
 	pid_t pid;
 	int r;
@@ -278,7 +276,7 @@ static int fork_wpa(struct owfd_p2pd_interface *iface,
 		return log_ERRNO();
 	} else if (!pid) {
 		/* child */
-		run_child(iface, config);
+		run_child(iface);
 		exit(1);
 	}
 
@@ -286,7 +284,8 @@ static int fork_wpa(struct owfd_p2pd_interface *iface,
 
 	iface->pid = pid;
 
-	r = asprintf(&ctrl, "%s/%s", config->wpa_ctrldir, config->interface);
+	r = asprintf(&ctrl, "%s/%s", iface->config->wpa_ctrldir,
+		     iface->config->interface);
 	if (r < 0)
 		return -ENOMEM;
 
@@ -297,7 +296,7 @@ static int fork_wpa(struct owfd_p2pd_interface *iface,
 	sigaddset(&mask, SIGPIPE);
 	owfd_wpa_ctrl_set_sigmask(iface->wpa, &mask);
 
-	r = wait_for_wpa(iface, config, ctrl, &mask);
+	r = wait_for_wpa(iface, ctrl, &mask);
 	if (r < 0) {
 		log_error("wpa_supplicant startup failed");
 		free(ctrl);
@@ -352,6 +351,7 @@ int owfd_p2pd_interface_new(struct owfd_p2pd_interface **out,
 	iface = calloc(1, sizeof(*iface));
 	if (!iface)
 		return log_ENOMEM();
+	iface->config = conf;
 
 	r = owfd_wpa_ctrl_new(&iface->wpa);
 	if (r < 0) {
@@ -360,7 +360,7 @@ int owfd_p2pd_interface_new(struct owfd_p2pd_interface **out,
 		goto err_iface;
 	}
 
-	r = fork_wpa(iface, conf);
+	r = fork_wpa(iface);
 	if (r < 0)
 		goto err_kill;
 
