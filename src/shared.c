@@ -45,3 +45,9 @@ int64_t get_time_us(void)
 
 	return t;
 }
+
+void us_to_timespec(struct timespec *ts, int64_t us)
+{
+	ts->tv_sec = us / (1000LL * 1000LL);
+	ts->tv_nsec = (us % (1000LL * 1000LL)) * 1000LL;
+}

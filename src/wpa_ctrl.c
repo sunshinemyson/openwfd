@@ -260,8 +260,7 @@ static int arm_timer(struct owfd_wpa_ctrl *wpa, int64_t usecs)
 	struct itimerspec spec;
 	int r;
 
-	spec.it_value.tv_sec = usecs / 1000000LL;
-	spec.it_value.tv_nsec = (usecs % 1000000LL) * 1000LL;
+	us_to_timespec(&spec.it_value, usecs);
 	spec.it_interval = spec.it_value;
 
 	r = timerfd_settime(wpa->tfd, 0, &spec, NULL);
@@ -532,6 +531,7 @@ static int timed_send(int fd, const void *cmd, size_t cmd_len,
 	int n;
 	struct pollfd fds[1];
 	const size_t max = sizeof(fds) / sizeof(*fds);
+	struct timespec ts;
 
 	start = get_time_us();
 
@@ -540,8 +540,9 @@ static int timed_send(int fd, const void *cmd, size_t cmd_len,
 		fds[0].fd = fd;
 		fds[0].events = POLLHUP | POLLERR | POLLOUT;
 
-		n = poll(fds, max, *timeout / 1000LL);
-		if (n < 0 && errno != EAGAIN && errno != EINTR) {
+		us_to_timespec(&ts, *timeout);
+		n = ppoll(fds, max, &ts, NULL);
+		if (n < 0 && errno != EAGAIN) {
 			return -errno;
 		} else if (!n) {
 			return -ETIMEDOUT;
@@ -584,6 +585,7 @@ static int timed_recv(int fd, void *reply, size_t *reply_len, int64_t *timeout)
 	int n;
 	struct pollfd fds[1];
 	const size_t max = sizeof(fds) / sizeof(*fds);
+	struct timespec ts;
 
 	start = get_time_us();
 
@@ -592,8 +594,9 @@ static int timed_recv(int fd, void *reply, size_t *reply_len, int64_t *timeout)
 		fds[0].fd = fd;
 		fds[0].events = POLLHUP | POLLERR | POLLIN;
 
-		n = poll(fds, max, *timeout / 1000LL);
-		if (n < 0 && errno != EAGAIN && errno != EINTR) {
+		us_to_timespec(&ts, *timeout);
+		n = ppoll(fds, max, &ts, NULL);
+		if (n < 0 && errno != EAGAIN) {
 			return -errno;
 		} else if (!n) {
 			return -ETIMEDOUT;

@@ -35,6 +35,7 @@ extern "C" {
 #endif
 
 int64_t get_time_us(void);
+void us_to_timespec(struct timespec *ts, int64_t us);
 
 #ifdef __cplusplus
 }
