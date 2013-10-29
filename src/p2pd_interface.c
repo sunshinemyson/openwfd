@@ -48,6 +48,7 @@ struct owfd_p2pd_interface {
 	pid_t pid;
 };
 
+static int wpa_setup(struct owfd_p2pd_interface *iface);
 static void wpa_event(struct owfd_wpa_ctrl *wpa, void *buf,
 		      size_t len, void *data);
 
@@ -304,6 +305,11 @@ static int fork_wpa(struct owfd_p2pd_interface *iface)
 	}
 
 	free(ctrl);
+
+	r = wpa_setup(iface);
+	if (r < 0)
+		return r;
+
 	return 0;
 }
 
@@ -419,6 +425,52 @@ int owfd_p2pd_interface_dispatch_chld(struct owfd_p2pd_interface *iface,
 	iface->pid = 0;
 
 	return OWFD_P2PD_EP_QUIT;
+}
+
+static int wpa_request_ok(struct owfd_p2pd_interface *iface, const char *req)
+{
+	return owfd_wpa_ctrl_request_ok(iface->wpa, req, strlen(req), -1);
+}
+
+static int wpa_request(struct owfd_p2pd_interface *iface, const char *req,
+		       char *buf, size_t *len)
+{
+	return owfd_wpa_ctrl_request(iface->wpa, req, strlen(req),
+				     buf, len, -1);
+}
+
+static int wpa_setup(struct owfd_p2pd_interface *iface)
+{
+	int r;
+	char buf[128];
+	size_t len;
+
+	len = sizeof(buf);
+	r = wpa_request(iface, "GET wifi_display", buf, &len);
+	if (r < 0 || len != 1 || *buf != '1')
+		goto err_notsupp;
+
+	r = wpa_request_ok(iface, "SET ap_scan 1");
+	if (r < 0)
+		goto err_notsupp;
+
+	r = wpa_request_ok(iface, "SET device_name some-random-name");
+	if (r < 0)
+		goto err_notsupp;
+
+	r = wpa_request_ok(iface, "SET device_type 1-0050F204-1");
+	if (r < 0)
+		goto err_notsupp;
+
+	r = wpa_request_ok(iface, "SET wifi_display 1");
+	if (r < 0)
+		goto err_notsupp;
+
+	return 0;
+
+err_notsupp:
+	log_error("wpa-setup failed; wifi-display probably not supported by adapter or wpa_supplicant");
+	return -ENODEV;
 }
 
 static void wpa_event(struct owfd_wpa_ctrl *wpa, void *buf,
