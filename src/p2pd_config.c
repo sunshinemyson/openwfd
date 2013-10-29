@@ -38,9 +38,14 @@ enum {
 	OPT_VERBOSE,
 	OPT_SILENT,
 	OPT_DEBUG,
+
+	OPT_INTERFACE,
+
+	OPT_WPA_BINARY,
+	OPT_WPA_CTRLDIR,
 };
 
-const char short_options[] = ":hv";
+const char short_options[] = ":hvi:";
 
 #define OPT(_name, _arg, _val) \
 	{ .name = _name, .has_arg = _arg, .val = LONG_OPT_OFFSET + _val }
@@ -49,6 +54,12 @@ const struct option long_options[] = {
 	OPT("verbose", 0, OPT_VERBOSE),
 	OPT("silent", 0, OPT_SILENT),
 	OPT("debug", 0, OPT_DEBUG),
+
+	OPT("interface", 1, OPT_INTERFACE),
+
+	OPT("wpa-binary", 1, OPT_WPA_BINARY),
+	OPT("wpa-ctrldir", 1, OPT_WPA_CTRLDIR),
+
 	OPT(NULL, 0, 0),
 };
 #undef OPT
@@ -60,6 +71,10 @@ void owfd_p2pd_init_config(struct owfd_p2pd_config *conf)
 
 void owfd_p2pd_clear_config(struct owfd_p2pd_config *conf)
 {
+	free(conf->interface);
+
+	free(conf->wpa_binary);
+	free(conf->wpa_ctrldir);
 }
 
 static void show_help(void)
@@ -84,8 +99,18 @@ static void show_help(void)
 		"\t-h, --help                  [off]   Print this help and exit\n"
 		"\t-v, --verbose               [off]   Print verbose messages\n"
 		"\t    --debug                 [off]   Enable debug mode\n"
-		"\t    --silent                [off]   Suppress notices and warnings\n",
-		"openwfd_p2pd");
+		"\t    --silent                [off]   Suppress notices and warnings\n"
+		"\n"
+		"Network Options:\n"
+		"\t-i, --interface <wlan0>     []      Wireless interface to run on\n"
+		"\n"
+		"WPA Supplicant Options:\n"
+		"\t    --wpa-binary </path>    [%2$s]\n"
+		"\t                                    Path to wpa_supplicant binary\n"
+		"\t    --wpa-ctrldir </path>   [/run/wpa_supplicant]\n"
+		"\t                                    Control-path for wpa_supplicant\n"
+		, "openwfd_p2pd",
+		BUILD_BINDIR_WPA_SUPPLICANT "/wpa_supplicant");
 	/*
 	 * 80 char line:
 	 *       |   10   |    20   |    30   |    40   |    50   |    60   |    70   |    80   |
@@ -96,10 +121,17 @@ static void show_help(void)
 	 */
 }
 
+static int OOM(void)
+{
+	fprintf(stderr, "out of memory\n");
+	return -ENOMEM;
+}
+
 int owfd_p2pd_parse_argv(struct owfd_p2pd_config *conf, int argc, char **argv)
 {
 	int c;
 	bool help = false;
+	char *t;
 
 	opterr = 0;
 	while (1) {
@@ -139,6 +171,30 @@ int owfd_p2pd_parse_argv(struct owfd_p2pd_config *conf, int argc, char **argv)
 		case OPT(OPT_DEBUG):
 			conf->debug = 1;
 			break;
+
+		case 'i':
+		case OPT(OPT_INTERFACE):
+			t = strdup(optarg);
+			if (!t)
+				return OOM();
+			free(conf->interface);
+			conf->interface = t;
+			break;
+
+		case OPT(OPT_WPA_BINARY):
+			t = strdup(optarg);
+			if (!t)
+				return OOM();
+			free(conf->wpa_binary);
+			conf->wpa_binary = t;
+			break;
+		case OPT(OPT_WPA_CTRLDIR):
+			t = strdup(optarg);
+			if (!t)
+				return OOM();
+			free(conf->wpa_ctrldir);
+			conf->wpa_ctrldir = t;
+			break;
 		}
 #undef OPT
 	}
@@ -153,6 +209,23 @@ int owfd_p2pd_parse_argv(struct owfd_p2pd_config *conf, int argc, char **argv)
 			"unparsed remaining arguments starting with: %s\n",
 			argv[optind]);
 		return -EINVAL;
+	}
+
+	if (!conf->interface) {
+		fprintf(stderr, "no interface given, use: -i <iface>\n");
+		return -EINVAL;
+	}
+
+	if (!conf->wpa_binary) {
+		conf->wpa_binary = strdup(BUILD_BINDIR_WPA_SUPPLICANT "/wpa_supplicant");
+		if (!conf->wpa_binary)
+			return OOM();
+	}
+
+	if (!conf->wpa_ctrldir) {
+		conf->wpa_ctrldir = strdup("/run/wpa_supplicant");
+		if (!conf->wpa_ctrldir)
+			return OOM();
 	}
 
 	return 0;

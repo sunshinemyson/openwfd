@@ -1,0 +1,392 @@
+/*
+ * OpenWFD - Open-Source Wifi-Display Implementation
+ *
+ * Copyright (c) 2013 David Herrmann <dh.herrmann@gmail.com>
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining
+ * a copy of this software and associated documentation files
+ * (the "Software"), to deal in the Software without restriction, including
+ * without limitation the rights to use, copy, modify, merge, publish,
+ * distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so, subject to
+ * the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included
+ * in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+#include <errno.h>
+#include <fcntl.h>
+#include <getopt.h>
+#include <poll.h>
+#include <signal.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/epoll.h>
+#include <sys/inotify.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include "p2pd.h"
+#include "shared.h"
+#include "shl_log.h"
+#include "wpa_ctrl.h"
+
+struct owfd_p2pd_interface {
+	struct owfd_wpa_ctrl *wpa;
+	pid_t pid;
+};
+
+/*
+ * Execute wpa_supplicant. This is called after fork(). It shall initialize the
+ * environment for wpa_supplicant and then execve() it. This should not return.
+ * If it does, exit(1) is called for this child.
+ */
+static void run_child(struct owfd_p2pd_interface *iface,
+		      struct owfd_p2pd_config *config)
+{
+	char *argv[64];
+	int i, r;
+
+	/* redirect stdout to stderr for wpa_supplicant */
+	r = dup2(2, 1);
+	if (r < 0)
+		return;
+
+	/* initialize wpa_supplicant args */
+	i = 0;
+	argv[i++] = config->wpa_binary;
+	argv[i++] = "-Dnl80211";
+	argv[i++] = "-qq";
+	argv[i++] = "-C";
+	argv[i++] = config->wpa_ctrldir;
+	argv[i++] = "-i";
+	argv[i++] = config->interface;
+	argv[i] = NULL;
+
+	/* execute wpa_supplicant; if it fails, the caller issues exit(1) */
+	execve(argv[0], argv, environ);
+}
+
+/*
+ * Test whether child with pid @pid is still running. This is a non-blocking
+ * call which drains the ECHLD queue in case it already died!
+ */
+static bool is_child_alive(pid_t pid)
+{
+	return !waitpid(pid, NULL, WNOHANG);
+}
+
+/*
+ * Wait for wpa_supplicant startup.
+ * We create an inotify-fd to wait for creation of /run/wpa_supplicant/wlan1.
+ * Then we wait for wlan1 to be opened and after that we open it ourselves.
+ *
+ * Note that inotify-fds must always be created before testing the condition.
+ * Otherwise, there's a race between testing the condition and starting the
+ * inotify-watch.
+ */
+static int wait_for_wpa(struct owfd_p2pd_interface *iface,
+			struct owfd_p2pd_config *config,
+			const char *file)
+{
+	int fd, r, w;
+	int64_t t, start;
+	struct pollfd fds[1];
+	char ev[sizeof(struct inotify_event) + 1024];
+	struct inotify_event *e;
+
+	/* create inotify-fd */
+	fd = inotify_init1(IN_CLOEXEC | IN_NONBLOCK);
+	if (fd < 0)
+		return log_ERRNO();
+
+	/* add /run/wpa_supplicant watch */
+	w = inotify_add_watch(fd, config->wpa_ctrldir,
+			      IN_CREATE | IN_MOVED_TO | IN_ONLYDIR);
+	if (w < 0) {
+		r = log_ERRNO();
+		goto err_close;
+	}
+
+	/* verify wpa_supplicant is still alive */
+	if (!is_child_alive(iface->pid)) {
+		log_error("wpa_supplicant died unexpectedly");
+		r = -ENODEV;
+		goto err_close;
+	}
+
+	/* set 10s timeout and poll-events */
+	t = 10LL * 1000LL * 1000LL;
+	fds[0].fd = fd;
+	fds[0].events = POLLHUP | POLLERR | POLLIN;
+
+	/* If /run/wpa_supplicant/<iface> does not exist, start waiting for
+	 * inotify events. Otherwise, skip waiting. */
+	if (access(file, F_OK) < 0) {
+		while (1) {
+			start = get_time_us();
+			fds[0].revents = 0;
+
+			/* poll for inotify events */
+			r = poll(fds, 1, t / 1000LL);
+			if (r < 0) {
+				r = log_ERRNO();
+				goto err_close;
+			} else if (r == 1 && fds[0].revents & (POLLHUP | POLLERR)) {
+				r = log_EPIPE();
+				goto err_close;
+			}
+
+			/* update timeout */
+			t = t - (get_time_us() - start);
+
+			/* verify wpa_supplicant is still alive */
+			if (!is_child_alive(iface->pid)) {
+				log_error("wpa_supplicant died unexpectedly");
+				r = -ENODEV;
+				goto err_close;
+			}
+
+			/* bail out if ctrl-sock is avilable */
+			if (!access(file, F_OK))
+				break;
+
+			/* drain input queue */
+			read(fd, ev, sizeof(ev));
+
+			/* check for timeout and then continue polling */
+			if (t <= 0) {
+				r = -ETIMEDOUT;
+				log_error("waiting for wpa_supplicant startup timed out");
+				goto err_close;
+			}
+		}
+	}
+
+	/* remove directory watch */
+	inotify_rm_watch(fd, w);
+
+	/* add socket watch */
+	w = inotify_add_watch(fd, file,
+			      IN_OPEN | IN_DELETE_SELF | IN_MOVE_SELF);
+	if (w < 0) {
+		r = log_ERRNO();
+		goto err_close;
+	}
+
+	/* verify wpa_supplicant is still alive */
+	if (!is_child_alive(iface->pid)) {
+		log_error("wpa_supplicant died unexpectedly");
+		r = -ENODEV;
+		goto err_close;
+	}
+
+	/* try opening socket and bail out if we succeed */
+	r = owfd_wpa_ctrl_open(iface->wpa, file, NULL);
+	if (r >= 0)
+		goto done;
+
+	/* Socket is not initialized by wpa_supplicant, yet. Start polling for
+	 * inotify events and wait until _someone_ opens it. */
+	while (1) {
+		start = get_time_us();
+		fds[0].revents = 0;
+
+		/* poll for events */
+		r = poll(fds, 1, t / 1000LL);
+		if (r < 0) {
+			r = log_ERRNO();
+			goto err_close;
+		} else if (r == 1 && fds[0].revents & (POLLHUP | POLLERR)) {
+			r = log_EPIPE();
+			goto err_close;
+		}
+
+		/* update timeout */
+		t = t - (get_time_us() - start);
+
+		/* verify wpa_supplicant is still alive */
+		if (!is_child_alive(iface->pid)) {
+			log_error("wpa_supplicant died unexpectedly");
+			r = -ENODEV;
+			goto err_close;
+		}
+
+		/* drain input queue */
+		r = read(fd, ev, sizeof(ev));
+		if (r < 0 && errno != EINTR && errno != EAGAIN) {
+			r = log_ERRNO();
+			goto err_close;
+		} else if (r > 0) {
+			e = (void*)ev;
+			if (e->wd == w) {
+				/* Yey! Startup should be clear now */
+				if (e->mask & IN_OPEN)
+					break;
+
+				/* Socket removed? Bail out and return error */
+				if (e->mask & (IN_DELETE_SELF |
+					       IN_MOVE_SELF |
+					       IN_IGNORED |
+					       IN_UNMOUNT)) {
+					log_error("wpa_supplicant control-file closed unexpectedly");
+					r = -ENODEV;
+					goto err_close;
+				}
+			}
+		}
+
+		/* check for timeout and then continue polling */
+		if (t <= 0) {
+			r = -ETIMEDOUT;
+			log_error("waiting for wpa_supplicant startup timed out");
+			goto err_close;
+		}
+	}
+
+	/* Retry opening socket. If it fails, sth seriously went wrong. */
+	r = owfd_wpa_ctrl_open(iface->wpa, file, NULL);
+	if (r < 0)
+		goto err_close;
+
+done:
+	r = 0;
+err_close:
+	close(fd);
+	return r;
+}
+
+/*
+ * Fork and exec wpa_supplicant. This waits for wpa_supplicant startup and
+ * connects the wpa_ctrl socket. If this returns (even with an error), you
+ * _must_ call kill_wpa() to stop the wpa_supplicant process later.
+ */
+static int fork_wpa(struct owfd_p2pd_interface *iface,
+		    struct owfd_p2pd_config *config)
+{
+	pid_t pid;
+	int r;
+	char *ctrl;
+
+	pid = fork();
+	if (pid < 0) {
+		return log_ERRNO();
+	} else if (!pid) {
+		/* child */
+		run_child(iface, config);
+		exit(1);
+	}
+
+	/* parent; wait for control-socket to be available */
+
+	iface->pid = pid;
+
+	r = asprintf(&ctrl, "%s/%s", config->wpa_ctrldir, config->interface);
+	if (r < 0)
+		return -ENOMEM;
+
+	log_info("waiting for wpa_supplicant startup on: %s", ctrl);
+
+	r = wait_for_wpa(iface, config, ctrl);
+	if (r < 0) {
+		log_error("wpa_supplicant startup failed");
+		free(ctrl);
+		return r;
+	}
+
+	free(ctrl);
+	return 0;
+}
+
+/*
+ * Stop running wpa_supplicant. This tries to send a synchronous TERMINATE
+ * message. If it fails, we send a signal to stop the child.
+ */
+static void kill_wpa(struct owfd_p2pd_interface *iface)
+{
+	int r;
+
+	if (iface->pid <= 0)
+		return;
+
+	if (owfd_wpa_ctrl_is_open(iface->wpa)) {
+		r = owfd_wpa_ctrl_request_ok(iface->wpa, "TERMINATE", 9, -1);
+		if (r >= 0) {
+			log_info("wpa_supplicant acknowledged termination request");
+			return;
+		}
+
+		log_error("cannot send termination request to wpa_supplicant (%d)", r);
+	}
+
+	/* TODO: somehow wpa_supplicant does not react to SIGTERM if we don't
+	 * have the ctrl-pipe connected. We send SIGKILL to avoid pending
+	 * processes, but this really needs to be fixed! */
+
+	log_info("sending SIGKILL to wpa_supplicant");
+	r = kill(iface->pid, SIGKILL);
+	if (r < 0)
+		log_error("cannot send SIGKILL to wpa_supplicant (%d)", r);
+}
+
+int owfd_p2pd_interface_new(struct owfd_p2pd_interface **out,
+			    struct owfd_p2pd_config *conf, int efd)
+{
+	struct owfd_p2pd_interface *iface;
+	int r;
+
+	log_info("using interface: %s", conf->interface);
+
+	iface = calloc(1, sizeof(*iface));
+	if (!iface)
+		return log_ENOMEM();
+
+	r = owfd_wpa_ctrl_new(&iface->wpa);
+	if (r < 0) {
+		errno = -r;
+		log_vERRNO();
+		goto err_iface;
+	}
+
+	r = fork_wpa(iface, conf);
+	if (r < 0)
+		goto err_kill;
+
+	*out = iface;
+	return 0;
+
+err_kill:
+	kill_wpa(iface);
+	owfd_wpa_ctrl_close(iface->wpa);
+	owfd_wpa_ctrl_unref(iface->wpa);
+err_iface:
+	free(iface);
+	return r;
+}
+
+void owfd_p2pd_interface_free(struct owfd_p2pd_interface *iface)
+{
+	if (!iface)
+		return;
+
+	kill_wpa(iface);
+	owfd_wpa_ctrl_close(iface->wpa);
+	owfd_wpa_ctrl_unref(iface->wpa);
+	free(iface);
+}
+
+int owfd_p2pd_interface_dispatch(struct owfd_p2pd_interface *iface,
+				 struct owfd_p2pd_ep *ep)
+{
+	return 0;
+}

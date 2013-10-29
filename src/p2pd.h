@@ -40,6 +40,11 @@ struct owfd_p2pd_config {
 	unsigned int verbose : 1;
 	unsigned int silent : 1;
 	unsigned int debug : 1;
+
+	char *interface;
+
+	char *wpa_binary;
+	char *wpa_ctrldir;
 };
 
 void owfd_p2pd_init_config(struct owfd_p2pd_config *conf);
@@ -63,6 +68,16 @@ struct owfd_p2pd_ep {
 int owfd_p2pd_ep_add(int efd, int *fd, unsigned int events);
 void owfd_p2pd_ep_update(int efd, int *fd, unsigned int events);
 void owfd_p2pd_ep_remove(int efd, int fd);
+
+/* interface handling */
+
+struct owfd_p2pd_interface;
+
+int owfd_p2pd_interface_new(struct owfd_p2pd_interface **out,
+			    struct owfd_p2pd_config *conf, int efd);
+void owfd_p2pd_interface_free(struct owfd_p2pd_interface *iface);
+int owfd_p2pd_interface_dispatch(struct owfd_p2pd_interface *iface,
+				 struct owfd_p2pd_ep *ep);
 
 #ifdef __cplusplus
 }
