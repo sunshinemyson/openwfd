@@ -176,10 +176,24 @@ static void owfd_p2pd_teardown(struct owfd_p2pd *p2pd)
 		close(p2pd->efd);
 }
 
+static void sig_dummy(int sig)
+{
+}
+
 static int owfd_p2pd_setup(struct owfd_p2pd *p2pd)
 {
-	int r;
+	static const int sigs[] = {
+		SIGINT,
+		SIGTERM,
+		SIGQUIT,
+		SIGHUP,
+		SIGCHLD,
+		SIGPIPE,
+		0
+	};
+	int r, i;
 	sigset_t mask;
+	struct sigaction sig;
 
 	p2pd->efd = epoll_create1(EPOLL_CLOEXEC);
 	if (p2pd->efd < 0) {
@@ -188,12 +202,18 @@ static int owfd_p2pd_setup(struct owfd_p2pd *p2pd)
 	}
 
 	sigemptyset(&mask);
-	sigaddset(&mask, SIGINT);
-	sigaddset(&mask, SIGTERM);
-	sigaddset(&mask, SIGQUIT);
-	sigaddset(&mask, SIGHUP);
-	sigaddset(&mask, SIGCHLD);
-	sigaddset(&mask, SIGPIPE);
+	memset(&sig, 0, sizeof(sig));
+	sig.sa_handler = sig_dummy;
+	sig.sa_flags = SA_RESTART;
+
+	for (i = 0; sigs[i]; ++i) {
+		sigaddset(&mask, sigs[i]);
+		r = sigaction(sigs[i], &sig, NULL);
+		if (r < 0) {
+			r = log_ERRNO();
+			goto error;
+		}
+	}
 
 	r = sigprocmask(SIG_BLOCK, &mask, NULL);
 	if (r < 0) {
