@@ -43,8 +43,12 @@
 
 struct owfd_p2pd_interface {
 	struct owfd_wpa_ctrl *wpa;
+	int wpa_fd;
 	pid_t pid;
 };
+
+static void owfd_p2pd_wpa_event(struct owfd_wpa_ctrl *wpa, void *buf,
+				size_t len, void *data);
 
 /*
  * Execute wpa_supplicant. This is called after fork(). It shall initialize the
@@ -200,7 +204,7 @@ static int wait_for_wpa(struct owfd_p2pd_interface *iface,
 	}
 
 	/* try opening socket and bail out if we succeed */
-	r = owfd_wpa_ctrl_open(iface->wpa, file, NULL);
+	r = owfd_wpa_ctrl_open(iface->wpa, file, owfd_p2pd_wpa_event);
 	if (r >= 0)
 		goto done;
 
@@ -234,7 +238,7 @@ static int wait_for_wpa(struct owfd_p2pd_interface *iface,
 		}
 
 		/* retry opening socket */
-		r = owfd_wpa_ctrl_open(iface->wpa, file, NULL);
+		r = owfd_wpa_ctrl_open(iface->wpa, file, owfd_p2pd_wpa_event);
 		if (r >= 0)
 			goto done;
 
@@ -360,6 +364,11 @@ int owfd_p2pd_interface_new(struct owfd_p2pd_interface **out,
 	if (r < 0)
 		goto err_kill;
 
+	iface->wpa_fd = owfd_wpa_ctrl_get_fd(iface->wpa);
+	r = owfd_p2pd_ep_add(efd, &iface->wpa_fd, EPOLLIN);
+	if (r < 0)
+		goto err_kill;
+
 	*out = iface;
 	return 0;
 
@@ -386,7 +395,16 @@ void owfd_p2pd_interface_free(struct owfd_p2pd_interface *iface)
 int owfd_p2pd_interface_dispatch(struct owfd_p2pd_interface *iface,
 				 struct owfd_p2pd_ep *ep)
 {
-	return 0;
+	int r;
+
+	if (ep->ev->data.ptr != &iface->wpa_fd)
+		return OWFD_P2PD_EP_NOT_HANDLED;
+
+	r = owfd_wpa_ctrl_dispatch(iface->wpa, 0);
+	if (r < 0)
+		return r;
+
+	return OWFD_P2PD_EP_HANDLED;;
 }
 
 int owfd_p2pd_interface_dispatch_chld(struct owfd_p2pd_interface *iface,
@@ -401,4 +419,9 @@ int owfd_p2pd_interface_dispatch_chld(struct owfd_p2pd_interface *iface,
 	iface->pid = 0;
 
 	return OWFD_P2PD_EP_QUIT;
+}
+
+static void owfd_p2pd_wpa_event(struct owfd_wpa_ctrl *wpa, void *buf,
+				size_t len, void *data)
+{
 }
