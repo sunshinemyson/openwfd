@@ -37,6 +37,7 @@
 #include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
+#include "shared.h"
 #include "wpa_ctrl.h"
 
 #define CTRL_PATH_TEMPLATE "/tmp/openwfd-wpa-ctrl-%d-%lu-XXXXXX"
@@ -520,18 +521,6 @@ int owfd_wpa_ctrl_dispatch(struct owfd_wpa_ctrl *wpa, int timeout)
 	}
 
 	return r;
-}
-
-static int64_t get_time_us(void)
-{
-	int64_t t;
-	struct timespec ts;
-
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-	t = ts.tv_sec * 1000LL * 1000LL;
-	t += ts.tv_nsec / 1000LL;
-
-	return t;
 }
 
 static int timed_send(int fd, const void *cmd, size_t cmd_len,
