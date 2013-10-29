@@ -143,16 +143,16 @@ int owfd_p2pd_parse_argv(struct owfd_p2pd_config *conf, int argc, char **argv)
 #undef OPT
 	}
 
+	if (help) {
+		show_help();
+		return -EAGAIN;
+	}
+
 	if (optind < argc) {
 		fprintf(stderr,
 			"unparsed remaining arguments starting with: %s\n",
 			argv[optind]);
 		return -EINVAL;
-	}
-
-	if (help) {
-		show_help();
-		return -EAGAIN;
 	}
 
 	return 0;
