@@ -56,6 +56,10 @@ static void run_child(struct owfd_p2pd_interface *iface,
 {
 	char *argv[64];
 	int i, r;
+	sigset_t mask;
+
+	sigemptyset(&mask);
+	sigprocmask(SIG_SETMASK, &mask, NULL);
 
 	/* redirect stdout to stderr for wpa_supplicant */
 	r = dup2(2, 1);
@@ -329,14 +333,10 @@ static void kill_wpa(struct owfd_p2pd_interface *iface)
 		log_error("cannot send termination request to wpa_supplicant (%d)", r);
 	}
 
-	/* TODO: somehow wpa_supplicant does not react to SIGTERM if we don't
-	 * have the ctrl-pipe connected. We send SIGKILL to avoid pending
-	 * processes, but this really needs to be fixed! */
-
-	log_info("sending SIGKILL to wpa_supplicant");
-	r = kill(iface->pid, SIGKILL);
+	log_info("sending SIGTERM to wpa_supplicant");
+	r = kill(iface->pid, SIGTERM);
 	if (r < 0)
-		log_error("cannot send SIGKILL to wpa_supplicant (%d)", r);
+		log_error("cannot send SIGTERM to wpa_supplicant (%d)", r);
 }
 
 int owfd_p2pd_interface_new(struct owfd_p2pd_interface **out,
