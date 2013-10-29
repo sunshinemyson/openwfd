@@ -635,8 +635,7 @@ static int wpa_request(int fd, const void *cmd, size_t cmd_len,
 {
 	char buf[REQ_REPLY_MAX];
 	size_t l = REQ_REPLY_MAX;
-
-	int64_t *t, t1 = -1;
+	int64_t *t, t1 = -1, max;
 	int r;
 
 	if (fd < 0)
@@ -651,9 +650,10 @@ static int wpa_request(int fd, const void *cmd, size_t cmd_len,
 	if (!reply_len)
 		reply_len = &l;
 
-	/* use a maximum of 1000ms */
-	if (*t < 0 || *t > 1000000LL)
-		*t = 1000000LL;
+	/* use a maximum of 10s */
+	max = 10LL * 1000LL * 1000LL;
+	if (*t < 0 || *t > max)
+		*t = max;
 
 	/* send() with timeout */
 	r = timed_send(fd, cmd, cmd_len, t);
