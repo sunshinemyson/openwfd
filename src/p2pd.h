@@ -29,6 +29,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <sys/epoll.h>
+#include <sys/signalfd.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -78,6 +79,8 @@ int owfd_p2pd_interface_new(struct owfd_p2pd_interface **out,
 void owfd_p2pd_interface_free(struct owfd_p2pd_interface *iface);
 int owfd_p2pd_interface_dispatch(struct owfd_p2pd_interface *iface,
 				 struct owfd_p2pd_ep *ep);
+int owfd_p2pd_interface_dispatch_chld(struct owfd_p2pd_interface *iface,
+				      struct signalfd_siginfo *info);
 
 #ifdef __cplusplus
 }

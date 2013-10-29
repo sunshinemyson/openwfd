@@ -390,3 +390,17 @@ int owfd_p2pd_interface_dispatch(struct owfd_p2pd_interface *iface,
 {
 	return 0;
 }
+
+int owfd_p2pd_interface_dispatch_chld(struct owfd_p2pd_interface *iface,
+				      struct signalfd_siginfo *info)
+{
+	if (iface->pid <= 0 || info->ssi_pid != iface->pid)
+		return OWFD_P2PD_EP_NOT_HANDLED;
+
+	log_info("wpa_supplicant exited");
+
+	owfd_wpa_ctrl_close(iface->wpa);
+	iface->pid = 0;
+
+	return OWFD_P2PD_EP_QUIT;
+}

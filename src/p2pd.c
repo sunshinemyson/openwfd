@@ -88,6 +88,7 @@ static int owfd_p2pd_dispatch_sfd(struct owfd_p2pd *p2pd,
 {
 	ssize_t l;
 	struct signalfd_siginfo info;
+	int r;
 
 	if (ep->ev->data.ptr != &p2pd->sfd)
 		return OWFD_P2PD_EP_NOT_HANDLED;
@@ -104,7 +105,23 @@ static int owfd_p2pd_dispatch_sfd(struct owfd_p2pd *p2pd,
 	log_notice("received signal %d: %s",
 		   info.ssi_signo, strsignal(info.ssi_signo));
 
-	return OWFD_P2PD_EP_QUIT;
+	switch (info.ssi_signo) {
+	case SIGCHLD:
+		r = owfd_p2pd_interface_dispatch_chld(p2pd->interface, &info);
+		if (r != OWFD_P2PD_EP_NOT_HANDLED)
+			break;
+
+		r = OWFD_P2PD_EP_HANDLED;
+		break;
+	case SIGPIPE:
+		r = OWFD_P2PD_EP_HANDLED;
+		break;
+	default:
+		r = OWFD_P2PD_EP_QUIT;
+		break;
+	}
+
+	return r;
 }
 
 static int owfd_p2pd_dispatch(struct owfd_p2pd *p2pd)
@@ -220,8 +237,6 @@ static int owfd_p2pd_setup(struct owfd_p2pd *p2pd)
 		r = log_ERRNO();
 		goto error;
 	}
-
-	sigdelset(&mask, SIGPIPE);
 
 	p2pd->sfd = signalfd(-1, &mask, SFD_CLOEXEC | SFD_NONBLOCK);
 	if (p2pd->sfd < 0) {
