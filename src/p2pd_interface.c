@@ -114,6 +114,12 @@ static int wait_for_wpa(struct owfd_p2pd_interface *iface,
 	if (fd < 0)
 		return log_ERRNO();
 
+	/* set 10s timeout and init poll-events */
+	t = 10LL * 1000LL * 1000LL;
+	fds[0].fd = fd;
+	fds[0].events = POLLHUP | POLLERR | POLLIN;
+
+try_again:
 	/* add /run/wpa_supplicant watch */
 	w = inotify_add_watch(fd, config->wpa_ctrldir,
 			      IN_CREATE | IN_MOVED_TO | IN_ONLYDIR);
@@ -128,11 +134,6 @@ static int wait_for_wpa(struct owfd_p2pd_interface *iface,
 		r = -ENODEV;
 		goto err_close;
 	}
-
-	/* set 10s timeout and poll-events */
-	t = 10LL * 1000LL * 1000LL;
-	fds[0].fd = fd;
-	fds[0].events = POLLHUP | POLLERR | POLLIN;
 
 	/* If /run/wpa_supplicant/<iface> does not exist, start waiting for
 	 * inotify events. Otherwise, skip waiting. */
@@ -238,15 +239,12 @@ static int wait_for_wpa(struct owfd_p2pd_interface *iface,
 				if (e->mask & IN_OPEN)
 					break;
 
-				/* Socket removed? Bail out and return error */
+				/* Socket removed? Bail out and retry */
 				if (e->mask & (IN_DELETE_SELF |
 					       IN_MOVE_SELF |
 					       IN_IGNORED |
-					       IN_UNMOUNT)) {
-					log_error("wpa_supplicant control-file closed unexpectedly");
-					r = -ENODEV;
-					goto err_close;
-				}
+					       IN_UNMOUNT))
+					break;
 			}
 		}
 
@@ -258,10 +256,16 @@ static int wait_for_wpa(struct owfd_p2pd_interface *iface,
 		}
 	}
 
-	/* Retry opening socket. If it fails, sth seriously went wrong. */
+	/* remove directory watch */
+	inotify_rm_watch(fd, w);
+
+	/* retry opening socket */
 	r = owfd_wpa_ctrl_open(iface->wpa, file, NULL);
-	if (r < 0)
-		goto err_close;
+	if (r < 0) {
+		/* The ctrl-file may be a left-over of a previous start. Start
+		 * all over again. */
+		goto try_again;
+	}
 
 done:
 	r = 0;
