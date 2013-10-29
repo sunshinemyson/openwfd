@@ -26,6 +26,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -50,6 +51,7 @@
 struct owfd_wpa_ctrl {
 	unsigned long ref;
 	void *data;
+	sigset_t mask;
 	int efd;
 	int tfd;
 
@@ -61,8 +63,10 @@ struct owfd_wpa_ctrl {
 };
 
 static int wpa_request(int fd, const void *cmd, size_t cmd_len,
-		       void *reply, size_t *reply_len, int64_t *t2);
-static int wpa_request_ok(int fd, const void *cmd, size_t cmd_len, int64_t *t);
+		       void *reply, size_t *reply_len, int64_t *t2,
+		       const sigset_t *mask);
+static int wpa_request_ok(int fd, const void *cmd, size_t cmd_len, int64_t *t,
+			  const sigset_t *mask);
 
 int owfd_wpa_ctrl_new(struct owfd_wpa_ctrl **out)
 {
@@ -78,6 +82,7 @@ int owfd_wpa_ctrl_new(struct owfd_wpa_ctrl **out)
 	wpa->tfd = -1;
 	wpa->req_fd = -1;
 	wpa->ev_fd = -1;
+	sigemptyset(&wpa->mask);
 
 	wpa->efd = epoll_create1(EPOLL_CLOEXEC);
 	if (wpa->efd < 0) {
@@ -301,7 +306,7 @@ int owfd_wpa_ctrl_open(struct owfd_wpa_ctrl *wpa, const char *ctrl_path,
 		goto err_req;
 	}
 
-	r = wpa_request_ok(wpa->ev_fd, "ATTACH", 6, NULL);
+	r = wpa_request_ok(wpa->ev_fd, "ATTACH", 6, NULL, &wpa->mask);
 	if (r < 0)
 		goto err_ev;
 
@@ -310,7 +315,7 @@ int owfd_wpa_ctrl_open(struct owfd_wpa_ctrl *wpa, const char *ctrl_path,
 
 err_ev:
 	t = 0;
-	wpa_request(wpa->ev_fd, "DETACH", 6, NULL, NULL, &t);
+	wpa_request(wpa->ev_fd, "DETACH", 6, NULL, NULL, &t, &wpa->mask);
 	close_socket(wpa, wpa->ev_fd, wpa->ev_name);
 	wpa->ev_fd = -1;
 err_req:
@@ -329,7 +334,7 @@ void owfd_wpa_ctrl_close(struct owfd_wpa_ctrl *wpa)
 		return;
 
 	t = 0;
-	wpa_request(wpa->ev_fd, "DETACH", 6, NULL, NULL, &t);
+	wpa_request(wpa->ev_fd, "DETACH", 6, NULL, NULL, &t, &wpa->mask);
 
 	close_socket(wpa, wpa->ev_fd, wpa->ev_name);
 	wpa->ev_fd = -1;
@@ -349,6 +354,11 @@ bool owfd_wpa_ctrl_is_open(struct owfd_wpa_ctrl *wpa)
 int owfd_wpa_ctrl_get_fd(struct owfd_wpa_ctrl *wpa)
 {
 	return wpa->efd;
+}
+
+void owfd_wpa_ctrl_set_sigmask(struct owfd_wpa_ctrl *wpa, const sigset_t *mask)
+{
+	memcpy(&wpa->mask, mask, sizeof(sigset_t));
 }
 
 static int read_ev(struct owfd_wpa_ctrl *wpa)
@@ -453,7 +463,8 @@ static int read_tfd(struct owfd_wpa_ctrl *wpa)
 	if (l < 0 && errno != EAGAIN && errno != EINTR) {
 		return -errno;
 	} else if (l == sizeof(exp)) {
-		r = wpa_request(wpa->req_fd, "PING", 4, buf, &len, NULL);
+		r = wpa_request(wpa->req_fd, "PING", 4, buf, &len, NULL,
+				&wpa->mask);
 		if (r < 0)
 			return r;
 		if (len != 5 || strncmp(buf, "PONG\n", 5))
@@ -523,7 +534,7 @@ int owfd_wpa_ctrl_dispatch(struct owfd_wpa_ctrl *wpa, int timeout)
 }
 
 static int timed_send(int fd, const void *cmd, size_t cmd_len,
-		      int64_t *timeout)
+		      int64_t *timeout, const sigset_t *mask)
 {
 	bool done = false;
 	int64_t start, t;
@@ -541,7 +552,7 @@ static int timed_send(int fd, const void *cmd, size_t cmd_len,
 		fds[0].events = POLLHUP | POLLERR | POLLOUT;
 
 		us_to_timespec(&ts, *timeout);
-		n = ppoll(fds, max, &ts, NULL);
+		n = ppoll(fds, max, &ts, mask);
 		if (n < 0 && errno != EAGAIN) {
 			return -errno;
 		} else if (!n) {
@@ -577,7 +588,8 @@ static int timed_send(int fd, const void *cmd, size_t cmd_len,
 	return 0;
 }
 
-static int timed_recv(int fd, void *reply, size_t *reply_len, int64_t *timeout)
+static int timed_recv(int fd, void *reply, size_t *reply_len, int64_t *timeout,
+		      const sigset_t *mask)
 {
 	bool done = false;
 	int64_t start, t;
@@ -595,7 +607,7 @@ static int timed_recv(int fd, void *reply, size_t *reply_len, int64_t *timeout)
 		fds[0].events = POLLHUP | POLLERR | POLLIN;
 
 		us_to_timespec(&ts, *timeout);
-		n = ppoll(fds, max, &ts, NULL);
+		n = ppoll(fds, max, &ts, mask);
 		if (n < 0 && errno != EAGAIN) {
 			return -errno;
 		} else if (!n) {
@@ -631,7 +643,8 @@ static int timed_recv(int fd, void *reply, size_t *reply_len, int64_t *timeout)
 }
 
 static int wpa_request(int fd, const void *cmd, size_t cmd_len,
-		       void *reply, size_t *reply_len, int64_t *t2)
+		       void *reply, size_t *reply_len, int64_t *t2,
+		       const sigset_t *mask)
 {
 	char buf[REQ_REPLY_MAX];
 	size_t l = REQ_REPLY_MAX;
@@ -656,25 +669,26 @@ static int wpa_request(int fd, const void *cmd, size_t cmd_len,
 		*t = max;
 
 	/* send() with timeout */
-	r = timed_send(fd, cmd, cmd_len, t);
+	r = timed_send(fd, cmd, cmd_len, t, mask);
 	if (r < 0)
 		return r;
 
 	/* recv() with timeout */
-	r = timed_recv(fd, reply, reply_len, t);
+	r = timed_recv(fd, reply, reply_len, t, mask);
 	if (r < 0)
 		return r;
 
 	return 0;
 }
 
-static int wpa_request_ok(int fd, const void *cmd, size_t cmd_len, int64_t *t)
+static int wpa_request_ok(int fd, const void *cmd, size_t cmd_len, int64_t *t,
+			  const sigset_t *mask)
 {
 	char buf[REQ_REPLY_MAX];
 	size_t l = REQ_REPLY_MAX;
 	int r;
 
-	r = wpa_request(fd, cmd, cmd_len, buf, &l, t);
+	r = wpa_request(fd, cmd, cmd_len, buf, &l, t, mask);
 	if (r < 0)
 		return r;
 
@@ -700,7 +714,8 @@ int owfd_wpa_ctrl_request(struct owfd_wpa_ctrl *wpa, const void *cmd,
 		timeout = 1000000;
 	t = timeout * 1000LL;
 
-	return wpa_request(wpa->req_fd, cmd, cmd_len, reply, reply_len, &t);
+	return wpa_request(wpa->req_fd, cmd, cmd_len, reply, reply_len, &t,
+			   &wpa->mask);
 }
 
 int owfd_wpa_ctrl_request_ok(struct owfd_wpa_ctrl *wpa, const void *cmd,

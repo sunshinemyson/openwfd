@@ -26,6 +26,7 @@
 #ifndef OWFD_WPA_CTRL_H
 #define OWFD_WPA_CTRL_H
 
+#include <signal.h>
 #include <stdbool.h>
 #include <stdlib.h>
 
@@ -51,6 +52,8 @@ void owfd_wpa_ctrl_close(struct owfd_wpa_ctrl *wpa);
 bool owfd_wpa_ctrl_is_open(struct owfd_wpa_ctrl *wpa);
 
 int owfd_wpa_ctrl_get_fd(struct owfd_wpa_ctrl *wpa);
+void owfd_wpa_ctrl_set_sigmask(struct owfd_wpa_ctrl *wpa,
+			       const sigset_t *mask);
 int owfd_wpa_ctrl_dispatch(struct owfd_wpa_ctrl *wpa, int timeout);
 
 int owfd_wpa_ctrl_request(struct owfd_wpa_ctrl *wpa, const void *cmd,
