@@ -228,7 +228,7 @@ static int wait_for_wpa(struct owfd_p2pd_interface *iface,
 
 		/* drain input queue */
 		r = read(fd, ev, sizeof(ev));
-		if (r < 0 && errno != EINTR && errno != EAGAIN) {
+		if (r < 0 && errno != EAGAIN) {
 			r = log_ERRNO();
 			goto err_close;
 		} else if (r > 0) {
@@ -281,6 +281,7 @@ static int fork_wpa(struct owfd_p2pd_interface *iface,
 	pid_t pid;
 	int r;
 	char *ctrl;
+	sigset_t mask, old;
 
 	pid = fork();
 	if (pid < 0) {
@@ -301,7 +302,19 @@ static int fork_wpa(struct owfd_p2pd_interface *iface,
 
 	log_info("waiting for wpa_supplicant startup on: %s", ctrl);
 
+	/* allow fatal signals during blocking startup */
+	sigemptyset(&mask);
+	sigaddset(&mask, SIGINT);
+	sigaddset(&mask, SIGTERM);
+	sigaddset(&mask, SIGQUIT);
+	sigaddset(&mask, SIGHUP);
+	sigaddset(&mask, SIGCHLD);
+	sigprocmask(SIG_UNBLOCK, &mask, &old);
+
 	r = wait_for_wpa(iface, config, ctrl);
+
+	sigprocmask(SIG_SETMASK, &old, NULL);
+
 	if (r < 0) {
 		log_error("wpa_supplicant startup failed");
 		free(ctrl);
