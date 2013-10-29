@@ -101,13 +101,14 @@ static bool is_child_alive(pid_t pid)
  */
 static int wait_for_wpa(struct owfd_p2pd_interface *iface,
 			struct owfd_p2pd_config *config,
-			const char *file)
+			const char *file, const sigset_t *mask)
 {
 	int fd, r, w;
 	int64_t t, start;
 	struct pollfd fds[1];
 	char ev[sizeof(struct inotify_event) + 1024];
 	struct inotify_event *e;
+	struct timespec ts;
 
 	/* create inotify-fd */
 	fd = inotify_init1(IN_CLOEXEC | IN_NONBLOCK);
@@ -143,7 +144,8 @@ try_again:
 			fds[0].revents = 0;
 
 			/* poll for inotify events */
-			r = poll(fds, 1, t / 1000LL);
+			us_to_timespec(&ts, t);
+			r = ppoll(fds, 1, &ts, mask);
 			if (r < 0) {
 				r = log_ERRNO();
 				goto err_close;
@@ -208,7 +210,8 @@ try_again:
 		fds[0].revents = 0;
 
 		/* poll for events */
-		r = poll(fds, 1, t / 1000LL);
+		us_to_timespec(&ts, t);
+		r = ppoll(fds, 1, &ts, mask);
 		if (r < 0) {
 			r = log_ERRNO();
 			goto err_close;
@@ -308,17 +311,10 @@ static int fork_wpa(struct owfd_p2pd_interface *iface,
 
 	/* allow fatal signals during blocking startup */
 	sigemptyset(&mask);
-	sigaddset(&mask, SIGINT);
-	sigaddset(&mask, SIGTERM);
-	sigaddset(&mask, SIGQUIT);
-	sigaddset(&mask, SIGHUP);
-	sigaddset(&mask, SIGCHLD);
-	sigprocmask(SIG_UNBLOCK, &mask, &old);
+	sigaddset(&mask, SIGPIPE);
+	owfd_wpa_ctrl_set_sigmask(iface->wpa, &mask);
 
-	r = wait_for_wpa(iface, config, ctrl);
-
-	sigprocmask(SIG_SETMASK, &old, NULL);
-
+	r = wait_for_wpa(iface, config, ctrl, &mask);
 	if (r < 0) {
 		log_error("wpa_supplicant startup failed");
 		free(ctrl);
