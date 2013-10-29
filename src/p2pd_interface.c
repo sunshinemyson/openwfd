@@ -107,7 +107,6 @@ static int wait_for_wpa(struct owfd_p2pd_interface *iface,
 	int64_t t, start;
 	struct pollfd fds[1];
 	char ev[sizeof(struct inotify_event) + 1024];
-	struct inotify_event *e;
 	struct timespec ts;
 
 	/* create inotify-fd */
@@ -120,7 +119,6 @@ static int wait_for_wpa(struct owfd_p2pd_interface *iface,
 	fds[0].fd = fd;
 	fds[0].events = POLLHUP | POLLERR | POLLIN;
 
-try_again:
 	/* add /run/wpa_supplicant watch */
 	w = inotify_add_watch(fd, config->wpa_ctrldir,
 			      IN_CREATE | IN_MOVED_TO | IN_ONLYDIR);
@@ -143,8 +141,9 @@ try_again:
 			start = get_time_us();
 			fds[0].revents = 0;
 
-			/* poll for inotify events */
-			us_to_timespec(&ts, t);
+			/* poll for inotify events; max 100ms per round */
+			us_to_timespec(&ts,
+				       (t > 100 * 1000LL) ? 100 * 1000LL : t);
 			r = ppoll(fds, 1, &ts, mask);
 			if (r < 0) {
 				r = log_ERRNO();
@@ -156,6 +155,8 @@ try_again:
 
 			/* update timeout */
 			t = t - (get_time_us() - start);
+			if (t < 0)
+				t = 0;
 
 			/* verify wpa_supplicant is still alive */
 			if (!is_child_alive(iface->pid)) {
@@ -209,8 +210,8 @@ try_again:
 		start = get_time_us();
 		fds[0].revents = 0;
 
-		/* poll for events */
-		us_to_timespec(&ts, t);
+		/* poll for events; max 100ms per round */
+		us_to_timespec(&ts, (t > 100 * 1000LL) ? 100 * 1000LL : t);
 		r = ppoll(fds, 1, &ts, mask);
 		if (r < 0) {
 			r = log_ERRNO();
@@ -222,6 +223,8 @@ try_again:
 
 		/* update timeout */
 		t = t - (get_time_us() - start);
+		if (t < 0)
+			t = 0;
 
 		/* verify wpa_supplicant is still alive */
 		if (!is_child_alive(iface->pid)) {
@@ -230,26 +233,13 @@ try_again:
 			goto err_close;
 		}
 
-		/* drain input queue */
-		r = read(fd, ev, sizeof(ev));
-		if (r < 0 && errno != EAGAIN) {
-			r = log_ERRNO();
-			goto err_close;
-		} else if (r > 0) {
-			e = (void*)ev;
-			if (e->wd == w) {
-				/* Yey! Startup should be clear now */
-				if (e->mask & IN_OPEN)
-					break;
+		/* retry opening socket */
+		r = owfd_wpa_ctrl_open(iface->wpa, file, NULL);
+		if (r >= 0)
+			goto done;
 
-				/* Socket removed? Bail out and retry */
-				if (e->mask & (IN_DELETE_SELF |
-					       IN_MOVE_SELF |
-					       IN_IGNORED |
-					       IN_UNMOUNT))
-					break;
-			}
-		}
+		/* drain input queue */
+		read(fd, ev, sizeof(ev));
 
 		/* check for timeout and then continue polling */
 		if (t <= 0) {
@@ -257,17 +247,6 @@ try_again:
 			log_error("waiting for wpa_supplicant startup timed out");
 			goto err_close;
 		}
-	}
-
-	/* remove directory watch */
-	inotify_rm_watch(fd, w);
-
-	/* retry opening socket */
-	r = owfd_wpa_ctrl_open(iface->wpa, file, NULL);
-	if (r < 0) {
-		/* The ctrl-file may be a left-over of a previous start. Start
-		 * all over again. */
-		goto try_again;
 	}
 
 done:
@@ -340,6 +319,12 @@ static void kill_wpa(struct owfd_p2pd_interface *iface)
 		r = owfd_wpa_ctrl_request_ok(iface->wpa, "TERMINATE", 9, -1);
 		if (r >= 0) {
 			log_info("wpa_supplicant acknowledged termination request");
+			return;
+		}
+
+		/* verify wpa_supplicant is still alive */
+		if (!is_child_alive(iface->pid)) {
+			log_info("wpa_supplicant already exited");
 			return;
 		}
 
