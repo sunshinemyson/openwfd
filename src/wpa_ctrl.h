@@ -61,4 +61,4 @@ int owfd_wpa_ctrl_request(struct owfd_wpa_ctrl *wpa, const void *cmd,
 }
 #endif
 
-#endif /* OPENWFD_WPA_CTRL_H */
+#endif /* OWFD_WPA_CTRL_H */
