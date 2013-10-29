@@ -47,8 +47,8 @@ struct owfd_p2pd_interface {
 	pid_t pid;
 };
 
-static void owfd_p2pd_wpa_event(struct owfd_wpa_ctrl *wpa, void *buf,
-				size_t len, void *data);
+static void wpa_event(struct owfd_wpa_ctrl *wpa, void *buf,
+		      size_t len, void *data);
 
 /*
  * Execute wpa_supplicant. This is called after fork(). It shall initialize the
@@ -204,7 +204,7 @@ static int wait_for_wpa(struct owfd_p2pd_interface *iface,
 	}
 
 	/* try opening socket and bail out if we succeed */
-	r = owfd_wpa_ctrl_open(iface->wpa, file, owfd_p2pd_wpa_event);
+	r = owfd_wpa_ctrl_open(iface->wpa, file, wpa_event);
 	if (r >= 0)
 		goto done;
 
@@ -238,7 +238,7 @@ static int wait_for_wpa(struct owfd_p2pd_interface *iface,
 		}
 
 		/* retry opening socket */
-		r = owfd_wpa_ctrl_open(iface->wpa, file, owfd_p2pd_wpa_event);
+		r = owfd_wpa_ctrl_open(iface->wpa, file, wpa_event);
 		if (r >= 0)
 			goto done;
 
@@ -421,7 +421,7 @@ int owfd_p2pd_interface_dispatch_chld(struct owfd_p2pd_interface *iface,
 	return OWFD_P2PD_EP_QUIT;
 }
 
-static void owfd_p2pd_wpa_event(struct owfd_wpa_ctrl *wpa, void *buf,
-				size_t len, void *data)
+static void wpa_event(struct owfd_wpa_ctrl *wpa, void *buf,
+		      size_t len, void *data)
 {
 }
