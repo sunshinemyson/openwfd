@@ -56,6 +56,8 @@ int owfd_wpa_ctrl_dispatch(struct owfd_wpa_ctrl *wpa, int timeout);
 int owfd_wpa_ctrl_request(struct owfd_wpa_ctrl *wpa, const void *cmd,
 			  size_t cmd_len, void *reply, size_t *reply_len,
 			  int timeout);
+int owfd_wpa_ctrl_request_ok(struct owfd_wpa_ctrl *wpa, const void *cmd,
+			     size_t cmd_len, int timeout);
 
 #ifdef __cplusplus
 }
