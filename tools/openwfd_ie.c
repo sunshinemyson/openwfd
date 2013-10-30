@@ -126,8 +126,8 @@ static void print_ie(const void *data, size_t len)
 		ie = data;
 
 		/* check for valid IE header length */
-		if (len < 6) {
-			print_err("remaining data too small (%u < 6)",
+		if (len < 2) {
+			print_err("remaining data too small (%u < 2)",
 				  (unsigned int)len);
 			goto error;
 		}
@@ -145,23 +145,12 @@ static void print_ie(const void *data, size_t len)
 
 		print_line("length: %u", (unsigned int)ie->length);
 
-		if (be32toh(ie->oui) == OPENWFD_WFD_IE_OUI_1_0)
-			print_line("oui: 0x%x (WFD-1.0)", (unsigned int)be32toh(ie->oui));
-		else
-			print_line("oui: 0x%x (UNKNOWN)", (unsigned int)be32toh(ie->oui));
-
 		/* skip header */
-		data = ((char*)data) + 6;
-		len -= 6;
+		data = ((char*)data) + 2;
+		len -= 2;
 
 		/* check that data payload does not exceed buffer */
-		if (ie->length > OPENWFD_WFD_IE_DATA_MAX) {
-			print_err("IE length too big (%u > %u), aborting",
-				  (unsigned int)ie->length,
-				  OPENWFD_WFD_IE_DATA_MAX);
-			indent_out();
-			goto error;
-		} else if (ie->length > len) {
+		if (ie->length > len) {
 			print_err("IE length bigger than remaining data (%u > %u), aborting",
 				  (unsigned int)ie->length, len);
 			indent_out();
@@ -177,14 +166,27 @@ static void print_ie(const void *data, size_t len)
 			print_err("IE ID unknown, aborting");
 			indent_out();
 			goto error;
+		}
+
+		/* parse OUI */
+		if (ie->length < 4) {
+			print_err("WFD IE lacks OUI (len %u < 4)",
+				  (unsigned int)ie->length);
+			indent_out();
+			goto error;
 		} else if (be32toh(ie->oui) != OPENWFD_WFD_IE_OUI_1_0) {
+			print_line("oui: 0x%x (UNKNOWN)",
+				   (unsigned int)be32toh(ie->oui));
 			print_err("WFD IE OUI unknown, aborting");
 			indent_out();
 			goto error;
 		}
 
-		/* iterate over sub-elements */
-		l = ie->length;
+		print_line("oui: 0x%x (WFD-1.0)",
+			   (unsigned int)be32toh(ie->oui));
+
+		/* skip OUI */
+		l = ie->length - 4;
 		h = ie->data;
 		while (l > 0) {
 			/* If @col is non-NULL, we are collecting IEs. See
@@ -328,7 +330,7 @@ int main(int argc, char **argv)
 
 	memset(&s, 0, sizeof(s));
 	s.ie1.element_id = OPENWFD_WFD_IE_ID;
-	s.ie1.length = sizeof(s.sub1) + sizeof(s.dev_info);
+	s.ie1.length = 4 + sizeof(s.sub1) + sizeof(s.dev_info);
 	s.ie1.oui = htobe32(OPENWFD_WFD_IE_OUI_1_0);
 
 	s.sub1.subelement_id = OPENWFD_WFD_IE_SUB_DEV_INFO;
