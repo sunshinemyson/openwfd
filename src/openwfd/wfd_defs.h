@@ -62,7 +62,7 @@ struct openwfd_wfd_ie {
 	uint8_t element_id;
 	uint8_t length;
 	uint32_t oui;
-	uint8_t data[OPENWFD_WFD_IE_DATA_MAX];
+	uint8_t data[];
 } OPENWFD__WFD_PACKED;
 
 /*
@@ -84,9 +84,10 @@ enum openwfd_wfd_ie_sub_type {
 	OPENWFD_WFD_IE_SUB_NUM
 };
 
-struct openwfd_wfd_ie_sub_header {
+struct openwfd_wfd_ie_sub {
 	uint8_t subelement_id;
 	uint16_t length;
+	uint8_t data[];
 } OPENWFD__WFD_PACKED;
 
 /*
@@ -158,7 +159,6 @@ struct openwfd_wfd_ie_sub_header {
 #define OPENWFD_WFD_IE_SUB_DEV_INFO_DEFAULT_PORT 7236
 
 struct openwfd_wfd_ie_sub_dev_info {
-	struct openwfd_wfd_ie_sub_header header;
 	uint16_t dev_info;
 	uint16_t ctrl_port;
 	uint16_t max_throughput;

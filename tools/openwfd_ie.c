@@ -70,106 +70,229 @@ static void indent_out(void)
 	--indent;
 }
 
-static void print_sub_dev_info(const struct openwfd_wfd_ie_sub_header *h)
+static void print_sub_dev_info(const struct openwfd_wfd_ie_sub *h,
+			       const struct openwfd_wfd_ie_sub_dev_info *p)
 {
-	const struct openwfd_wfd_ie_sub_dev_info *sub;
-
 	if (be16toh(h->length) != 6) {
 		print_err("invalid sub-length %u",
 			  (unsigned int)be16toh(h->length));
 		return;
 	}
 
-	sub = (void*)h;
-	print_line("dev_info: %x", be16toh(sub->dev_info));
-	print_line("ctrl_port: %u", be16toh(sub->ctrl_port));
-	print_line("max_throughput: %u", be16toh(sub->max_throughput));
+	print_line("dev_info: %x", be16toh(p->dev_info));
+	print_line("ctrl_port: %u", be16toh(p->ctrl_port));
+	print_line("max_throughput: %u", be16toh(p->max_throughput));
 }
 
-static void print_sub(const struct openwfd_wfd_ie_sub_header *h)
+static void print_sub(const struct openwfd_wfd_ie_sub *sub, void *data)
 {
 	print_line("subelement_id: 0x%x",
-		   (unsigned int)h->subelement_id);
+		   (unsigned int)sub->subelement_id);
 	print_line("length: %u",
-		   (unsigned int)be16toh(h->length));
+		   (unsigned int)be16toh(sub->length));
 
-	switch (h->subelement_id) {
+	switch (sub->subelement_id) {
 	case OPENWFD_WFD_IE_SUB_DEV_INFO:
 		print_line("type: DEVICE INFO");
-		print_sub_dev_info(h);
+		print_sub_dev_info(sub, data);
 		break;
 	default:
-		print_line("unsupported sub-element ID %x",
-			   (unsigned int)h->subelement_id);
+		print_line("unknown sub-element ID %x",
+			   (unsigned int)sub->subelement_id);
 		break;
 	}
 }
 
-static void print_ie(const struct openwfd_wfd_ie *ies, size_t num)
+static void print_ie(const void *data, size_t len)
 {
 	const struct openwfd_wfd_ie *ie;
-	const struct openwfd_wfd_ie_sub_header *h;
-	const uint8_t *data;
-	uint8_t *t;
-	size_t length, l;
+	const struct openwfd_wfd_ie_sub *sub;
+	const void *h;
+	void *col, *c;
+	size_t l, sl;
 
-	print_line("WFD IE:");
+	print_line("IE:");
 
-	if (!num) {
-		print_line("empty IE");
+	indent_in();
+
+	if (!len) {
+		print_line("<empty>");
+		indent_out();
 		return;
 	}
 
-	indent_in();
-	ie = ies;
+	col = NULL;
+	while (len > 0) {
+		ie = data;
 
-	print_line("element_id: 0x%x", (unsigned int)ie->element_id);
-	print_line("length: %u", (unsigned int)ie->length);
-
-	data = ie->data;
-	length = ie->length;
-	if (length < 4) {
-		print_err("invalid IE, length < 4");
-		goto error;
-	}
-
-	print_line("oui: 0x%x", (unsigned int)be32toh(ie->oui));
-	length -= 4;
-
-	while (length) {
-		if (length < 3) {
-			print_err("invalid IE, rest-length < 3 (%u)",
-				  length);
+		/* check for valid IE header length */
+		if (len < 6) {
+			print_err("remaining data too small (%u < 6)",
+				  (unsigned int)len);
 			goto error;
 		}
 
-		h = (void*)data;
-		l = be16toh(h->length);
-
-		print_line("subelement:");
-
-		t = malloc(l + 3);
-		if (!t) {
-			print_err("out of memory for subelement of size %u",
-				   (unsigned int)l);
-			goto error;
-		}
-
-		if (l > length) {
-			print_err("multi-IE sub-elements not yet supported");
-			goto error;
-		}
-
-		memcpy(t, data, l + 3);
-		length -= l + 3;
-		data += l + 3;
-
+		/* print IE header */
+		print_line("IE BLOCK:");
 		indent_in();
-		print_sub((void*)t);
+
+		if (ie->element_id == OPENWFD_WFD_IE_ID)
+			print_line("element_id: 0x%x (WFD)",
+				   (unsigned int)ie->element_id);
+		else
+			print_line("element_id: 0x%x (UNKNOWN)",
+				   (unsigned int)ie->element_id);
+
+		print_line("length: %u", (unsigned int)ie->length);
+
+		if (be32toh(ie->oui) == OPENWFD_WFD_IE_OUI_1_0)
+			print_line("oui: 0x%x (WFD-1.0)", (unsigned int)be32toh(ie->oui));
+		else
+			print_line("oui: 0x%x (UNKNOWN)", (unsigned int)be32toh(ie->oui));
+
+		/* skip header */
+		data = ((char*)data) + 6;
+		len -= 6;
+
+		/* check that data payload does not exceed buffer */
+		if (ie->length > OPENWFD_WFD_IE_DATA_MAX) {
+			print_err("IE length too big (%u > %u), aborting",
+				  (unsigned int)ie->length,
+				  OPENWFD_WFD_IE_DATA_MAX);
+			indent_out();
+			goto error;
+		} else if (ie->length > len) {
+			print_err("IE length bigger than remaining data (%u > %u), aborting",
+				  (unsigned int)ie->length, len);
+			indent_out();
+			goto error;
+		}
+
+		/* skip block */
+		data = ((char*)data) + ie->length;
+		len -= ie->length;
+
+		/* abort if unknown */
+		if (ie->element_id != OPENWFD_WFD_IE_ID) {
+			print_err("IE ID unknown, aborting");
+			indent_out();
+			goto error;
+		} else if (be32toh(ie->oui) != OPENWFD_WFD_IE_OUI_1_0) {
+			print_err("WFD IE OUI unknown, aborting");
+			indent_out();
+			goto error;
+		}
+
+		/* iterate over sub-elements */
+		l = ie->length;
+		h = ie->data;
+		while (l > 0) {
+			/* If @col is non-NULL, we are collecting IEs. See
+			 * below in sub-IE parsing what we do. */
+			if (col) {
+				if (l >= sl) {
+					memcpy(c, h, sl);
+					l -= sl;
+					h = ((char*)h) + sl;
+
+					indent_in();
+					print_sub(sub, col);
+					indent_out();
+
+					free(col);
+					col = NULL;
+				} else {
+					print_line("MULTI IE sub-element; delay parsing to next IE");
+
+					memcpy(c, h, l);
+					sl -= l;
+					l = 0;
+					c = ((char*)c) + l;
+				}
+
+				if (col || !l)
+					break;
+			}
+
+			/* parse WFD IE subelement header */
+			if (l < 3) {
+				print_err("WFD IE subelement header block too small (%u < 3), aborting",
+					  (unsigned int)l);
+				indent_out();
+				goto error;
+			}
+
+			sub = h;
+			sl = be16toh(sub->length);
+			print_line("IE SUBELEMENT(id: %u len: %u):",
+				   (unsigned int)sub->subelement_id,
+				   (unsigned int)sl);
+
+			/* skip subelement header */
+			l -= 3;
+			h = ((char*)h) + 3;
+
+			/* if empty payload, skip */
+			if (!sl) {
+				continue;
+			}
+
+			/* allocate memory for sub-element */
+			col = malloc(sl);
+			if (!col) {
+				print_err("out of memory");
+				indent_out();
+				goto error;
+			}
+
+			/*
+			 * Collect sub-element
+			 * @len is length of total buffer
+			 * @l is length of current IE payload
+			 * @sl is wanted length of current subelement payload
+			 *
+			 * @sl may be bigger than @l, in which case we need to
+			 * open the next IE and parse it. The next IE _must_
+			 * have the same header as our current IE, otherwise
+			 * we need to abort.
+			 *
+			 * We set @c to the current position in @col and start
+			 * copying the current payload. If it's enough, we
+			 * parse the sub and continue as usual.
+			 * If it's not enough, we simply break; and let the
+			 * parent IE handler continue. It detects that col is
+			 * not NULL and picks up the unfinished sub.
+			 */
+			c = col;
+			if (l >= sl) {
+				memcpy(c, h, sl);
+				l -= sl;
+				h = ((char*)h) + sl;
+
+				indent_in();
+				print_sub(sub, col);
+				indent_out();
+
+				free(col);
+				col = NULL;
+			} else {
+				print_line("MULTI IE sub-element; delay parsing to next IE");
+
+				memcpy(c, h, l);
+				sl -= l;
+				l = 0;
+				c = ((char*)c) + l;
+			}
+		}
+
 		indent_out();
 	}
 
+	if (col)
+		print_err("MULTI IE sub-element not entirely contained in data");
+
 error:
+	free(col);
 	indent_out();
 	print_line("");
 }
@@ -191,23 +314,26 @@ static void print_hex(const uint8_t *d, size_t len)
 	fprintf(outfile, "END of IE\n");
 }
 
+struct example {
+	struct openwfd_wfd_ie ie1;
+	struct openwfd_wfd_ie_sub sub1;
+	struct openwfd_wfd_ie_sub_dev_info dev_info;
+} OPENWFD__WFD_PACKED;
+
 int main(int argc, char **argv)
 {
-	struct openwfd_wfd_ie ie;
-	struct openwfd_wfd_ie_sub_dev_info *sub;
+	struct example s;
 
 	outfile = stdout;
 
-	memset(&ie, 0, sizeof(ie));
-	ie.element_id = OPENWFD_WFD_IE_ID;
-	ie.length = 4;
-	ie.oui = htobe32(OPENWFD_WFD_IE_OUI_1_0);
+	memset(&s, 0, sizeof(s));
+	s.ie1.element_id = OPENWFD_WFD_IE_ID;
+	s.ie1.length = sizeof(s.sub1) + sizeof(s.dev_info);
+	s.ie1.oui = htobe32(OPENWFD_WFD_IE_OUI_1_0);
 
-	sub = (void*)ie.data;
-	ie.length += 9;
-	sub->header.subelement_id = OPENWFD_WFD_IE_SUB_DEV_INFO;
-	sub->header.length = htobe16(6);
-	sub->dev_info = htobe16(
+	s.sub1.subelement_id = OPENWFD_WFD_IE_SUB_DEV_INFO;
+	s.sub1.length = htobe16(sizeof(s.dev_info));
+	s.dev_info.dev_info = htobe16(
 			OPENWFD_WFD_IE_SUB_DEV_INFO_PRIMARY_SINK |
 			OPENWFD_WFD_IE_SUB_DEV_INFO_SRC_NO_COUPLED_SINK |
 			OPENWFD_WFD_IE_SUB_DEV_INFO_SINK_NO_COUPLED_SINK |
@@ -221,11 +347,11 @@ int main(int argc, char **argv)
 			OPENWFD_WFD_IE_SUB_DEV_INFO_NO_PERSIST_TLDS |
 			OPENWFD_WFD_IE_SUB_DEV_INFO_NO_TLDS_REINVOKE
 		);
-	sub->ctrl_port = htobe16(OPENWFD_WFD_IE_SUB_DEV_INFO_DEFAULT_PORT);
-	sub->max_throughput = htobe16(200);
+	s.dev_info.ctrl_port = htobe16(OPENWFD_WFD_IE_SUB_DEV_INFO_DEFAULT_PORT);
+	s.dev_info.max_throughput = htobe16(200);
 
-	print_ie(&ie, 1);
-	print_hex((uint8_t*)&ie, ie.length + 2);
+	print_ie(&s, sizeof(s));
+	print_hex((uint8_t*)&s, sizeof(s));
 
 	return 0;
 }
