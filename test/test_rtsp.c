@@ -128,7 +128,7 @@ static void test_rtsp_decoder_event(struct owfd_rtsp_decoder *dec,
 	}
 
 	/* print message */
-	if (1) {
+	if (0) {
 		fprintf(stderr, "Message:\n");
 		fprintf(stderr, "  header_num: %zu:\n", msg->header_num);
 		for (i = 0; i < msg->header_num; ++i)
@@ -241,8 +241,52 @@ START_TEST(test_rtsp_decoder)
 }
 END_TEST
 
+static void tokenize(const char *line, const char *expect, size_t len,
+		     size_t num)
+{
+	char *t, *s;
+	ssize_t l, i;
+
+	ck_assert(len > 0);
+
+	l = owfd_rtsp_tokenize(line, &t);
+	ck_assert(l >= 0);
+
+	if (0) {
+		fprintf(stderr, "TOKENIZER (%lu):\n", (unsigned long)l);
+		s = t;
+		for (i = 0; i < l; ++i) {
+			fprintf(stderr, "  TOKEN: %s\n", s);
+			s += strlen(s) + 1;
+		}
+	}
+
+	ck_assert(l == (ssize_t)num);
+	ck_assert(!memcmp(t, expect, len));
+	free(t);
+}
+
+#define TOKENIZE(_line, _exp, _num) \
+	tokenize((_line), (_exp), sizeof(_exp), _num)
+
+START_TEST(test_rtsp_tokenizer)
+{
+	TOKENIZE("", "", 0);
+	TOKENIZE("asdf", "asdf", 1);
+	TOKENIZE("asdf\"\"asdf", "asdf\0\0asdf", 3);
+	TOKENIZE("asdf\"asdf\"asdf", "asdf\0asdf\0asdf", 3);
+	TOKENIZE("\"asdf\"", "asdf", 1);
+	TOKENIZE("\"\\n\\\\\\r\"", "\n\\\r", 1);
+	TOKENIZE("\"\\\"\"", "\"", 1);
+	TOKENIZE("\"\\0\\\0\"", "", 1);
+	TOKENIZE("content-length:   100", "content-length\0:\0""100", 3);
+	TOKENIZE("content-args: (50+10)", "content-args\0:\0(\0""50+10\0)", 5);
+}
+END_TEST
+
 TEST_DEFINE_CASE(decoder)
 	TEST(test_rtsp_decoder)
+	TEST(test_rtsp_tokenizer)
 TEST_END_CASE
 
 TEST_DEFINE(

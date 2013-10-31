@@ -91,6 +91,7 @@ libowfd_la_SOURCES = \
 	src/rtsp.h \
 	src/rtsp_ctrl.c \
 	src/rtsp_decoder.c \
+	src/rtsp_tokenizer.c \
 	src/shared.h \
 	src/shared.c \
 	src/wpa_ctrl.h \

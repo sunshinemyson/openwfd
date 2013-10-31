@@ -102,6 +102,10 @@ void owfd_rtsp_decoder_flush(struct owfd_rtsp_decoder *dec);
 int owfd_rtsp_decoder_feed(struct owfd_rtsp_decoder *dec,
 			   const char *buf, size_t len);
 
+/* rtsp tokenizer */
+
+ssize_t owfd_rtsp_tokenize(const char *line, char **out);
+
 #ifdef __cplusplus
 }
 #endif
