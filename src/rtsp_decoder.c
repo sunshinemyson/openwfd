@@ -35,6 +35,7 @@
 enum state {
 	STATE_NEW,
 	STATE_HEADER,
+	STATE_HEADER_QUOTE,
 	STATE_HEADER_NL,
 	STATE_BODY,
 };
@@ -47,6 +48,7 @@ struct owfd_rtsp_decoder {
 	unsigned int state;
 	char last_chr;
 	size_t remaining_body;
+	unsigned int quoted : 1;
 
 	size_t header_size;
 	struct owfd_rtsp_msg msg;
@@ -182,29 +184,47 @@ static size_t sanitize_header_line(struct owfd_rtsp_decoder *dec,
 {
 	char *src, *dst, c, prev, last_c;
 	size_t i;
+	bool quoted, escaped;
 
 	src = line;
 	dst = line;
 	last_c = 0;
+	quoted = 0;
+	escaped = 0;
 
 	for (i = 0; i < len; ++i) {
 		c = *src++;
 		prev = last_c;
 		last_c = c;
 
-		/* ignore any binary 0 */
-		if (c == '\0')
-			continue;
+		if (quoted) {
+			if (prev == '\\' && !escaped) {
+				escaped = 1;
+			} else {
+				escaped = 0;
+				if (c == '"')
+					quoted = 0;
+			}
+		} else {
+			/* ignore any binary 0 */
+			if (c == '\0')
+				continue;
 
-		/* turn new-lines/tabs into white-space */
-		if (c == '\r' || c == '\n' || c == '\t') {
-			c = ' ';
-			last_c = c;
+			/* turn new-lines/tabs into white-space */
+			if (c == '\r' || c == '\n' || c == '\t') {
+				c = ' ';
+				last_c = c;
+			}
+
+			/* trim whitespace */
+			if (c == ' ' && prev == ' ')
+				continue;
+
+			if (c == '"') {
+				quoted = 1;
+				escaped = 0;
+			}
 		}
-
-		/* trim whitespace */
-		if (c == ' ' && prev == ' ')
-			continue;
 
 		*dst++ = c;
 	}
@@ -367,6 +387,22 @@ static ssize_t feed_char_header(struct owfd_rtsp_decoder *dec,
 			++rlen;
 		}
 		break;
+	case '"':
+		/* Last line was already completed and this is no whitespace,
+		 * thus it's not a continuation line. Finish the line. */
+		if (dec->last_chr == '\r' || dec->last_chr == '\n') {
+			/* don't include new char in line */
+			r = finish_header_line(dec, rlen);
+			if (r < 0)
+				return r;
+			rlen = 0;
+		}
+
+		/* Push character into new line and go to STATE_HEADER_QUOTE */
+		dec->state = STATE_HEADER_QUOTE;
+		dec->quoted = 0;
+		++rlen;
+		break;
 	case '\t':
 	case ' ':
 		/* Whitespace. Simply push into buffer and don't do anything.
@@ -388,6 +424,31 @@ static ssize_t feed_char_header(struct owfd_rtsp_decoder *dec,
 		/* Push character into new line. Nothing to be done. */
 		++rlen;
 		break;
+	}
+
+	return rlen;
+}
+
+static ssize_t feed_char_header_quote(struct owfd_rtsp_decoder *dec,
+				      char ch, size_t rlen)
+{
+	if (dec->last_chr == '\\' && !dec->quoted) {
+		/* This character is quoted, so copy it unparsed. To handle
+		 * double-backslash, we set the "quoted" bit. */
+		++rlen;
+		dec->quoted = 1;
+	} else {
+		dec->quoted = 0;
+
+		switch (ch) {
+		case '"':
+			dec->state = STATE_HEADER;
+			++rlen;
+			break;
+		default:
+			++rlen;
+			break;
+		}
 	}
 
 	return rlen;
@@ -470,6 +531,9 @@ static ssize_t feed_char(struct owfd_rtsp_decoder *dec, char ch, size_t rlen)
 		break;
 	case STATE_HEADER:
 		r = feed_char_header(dec, ch, rlen);
+		break;
+	case STATE_HEADER_QUOTE:
+		r = feed_char_header_quote(dec, ch, rlen);
 		break;
 	case STATE_HEADER_NL:
 		r = feed_char_header_nl(dec, ch, rlen);
