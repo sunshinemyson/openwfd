@@ -90,6 +90,26 @@ static void test_rtsp_decoder_event(struct owfd_rtsp_decoder *dec,
 				.body_len = 10,
 			},
 		},
+		{
+			.times = 1,
+			.msg = {
+				.header_num = 3,
+				.header = (char*[]){
+					"\"so\\\"\nme\\\"\n-head  \": \"buhu\n\"",
+					"content-length:10",
+					"more-header: bing-bung",
+					NULL,
+				},
+				.header_len = (size_t[]){
+					28,
+					17,
+					22,
+					0,
+				},
+				.body = "0123456789",
+				.body_len = 10,
+			},
+		},
 	};
 	struct expect *e;
 	struct owfd_rtsp_msg *m;
@@ -210,6 +230,10 @@ START_TEST(test_rtsp_decoder)
 	ck_assert(received == sent);
 
 	FEED(d, "  \t\n \t some-head: \n\t\r buhu     \ncontent-length:10\r\nmore-header:  bing-\0bung \r\n\n0123456789");
+	++sent;
+	ck_assert(received == sent);
+
+	FEED(d, "\"so\\\"\nme\\\"\n-head  \":\n \"buhu\n\"\ncontent-length:10\r\nmore-header:  bing-\0bung \r\n\n0123456789");
 	++sent;
 	ck_assert(received == sent);
 
