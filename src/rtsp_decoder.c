@@ -197,8 +197,10 @@ static size_t sanitize_header_line(struct owfd_rtsp_decoder *dec,
 			continue;
 
 		/* turn new-lines/tabs into white-space */
-		if (c == '\r' || c == '\n' || c == '\t')
+		if (c == '\r' || c == '\n' || c == '\t') {
 			c = ' ';
+			last_c = c;
+		}
 
 		/* trim whitespace */
 		if (c == ' ' && prev == ' ')
