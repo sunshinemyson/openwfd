@@ -82,6 +82,29 @@ libshl_la_LDFLAGS = $(AM_LDFLAGS)
 libshl_la_LIBADD = $(AM_LIBADD)
 
 #
+# gdhcp - dhcp implementation
+#
+
+noinst_LTLIBRARIES += libgdhcp.la
+
+libgdhcp_la_SOURCES = \
+	src/gdhcp/gdhcp.h \
+	src/gdhcp/unaligned.h \
+	src/gdhcp/common.h \
+	src/gdhcp/common.c \
+	src/gdhcp/ipv4ll.h \
+	src/gdhcp/ipv4ll.c \
+	src/gdhcp/client.c \
+	src/gdhcp/server.c
+libgdhcp_la_CPPFLAGS = \
+	$(AM_CPPFLAGS) \
+	$(GDHCP_CFLAGS)
+libgdhcp_la_LDFLAGS = $(AM_LDFLAGS)
+libgdhcp_la_LIBADD = \
+	$(AM_LIBADD) \
+	$(GDHCP_LIBS)
+
+#
 # owfd - shared helpers
 #
 

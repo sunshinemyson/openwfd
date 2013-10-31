@@ -8,11 +8,20 @@ This software was written by:
 Copyright Notice
 ================
 
-This software is licensed under the terms of the MIT license. Please see each
-source file for the related copyright notice and license.
+Most of this software is licensed under the terms of the MIT license. Please see
+each source file for the related copyright notice and license. Note that parts
+of this distribution are licensed as GPLv2 or else. The MIT license only
+applies to all code written as part of OpenWFD.
+
+If you distribute this software as pre-compiled executable, you must choose the
+GPLv2 license as common denominator and include this file with your
+distribution! If you distribute only the source-code, each license applies only
+to the source code it is mentioned for.
 
 If a file does not contain a copright notice, the following license shall
 apply:
+
+	OpenWFD - Open-Source Wifi-Display Implementation
 
 	Copyright (c) 2013 David Herrmann <dh.herrmann@gmail.com>
 
@@ -38,4 +47,26 @@ apply:
 Third-Party Source
 ==================
 
-	N/A
+gdhcp is copied from connman:
+	cgit: http://git.kernel.org/cgit/network/connman/connman.git
+	web: https://connman.net/
+
+	Connman is licensed as GPLv2 exclusively. The copyright is:
+
+		DHCP library with GLib integration
+
+		Copyright (C) 2009-2012  Intel Corporation. All rights reserved.
+
+		This program is free software; you can redistribute it and/or
+		modify it under the terms of the GNU General Public License
+		version 2 as published by the Free Software Foundation.
+
+		This program is distributed in the hope that it will be useful,
+		but WITHOUT ANY WARRANTY; without even the implied warranty of
+		MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+		GNU General Public License for more details.
+
+		You should have received a copy of the GNU General Public
+		License along with this program; if not, write to the Free
+		Software Foundation, Inc., 51 Franklin St, Fifth Floor,
+		Boston, MA  02110-1301  USA
