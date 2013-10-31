@@ -212,6 +212,10 @@ static size_t sanitize_header_line(struct owfd_rtsp_decoder *dec,
 	/* terminate string with binary zero */
 	*dst = 0;
 
+	/* remove trailing whitespace */
+	while (dst > line && *(dst - 1) == ' ')
+		*--dst = 0;
+
 	return dst - line;
 }
 
