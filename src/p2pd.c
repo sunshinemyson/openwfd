@@ -141,6 +141,7 @@ static int owfd_p2pd_dispatch(struct owfd_p2pd *p2pd)
 		n = max;
 	}
 
+	r = 0;
 	ep.evs = evs;
 	ep.num = n;
 	for (i = 0; i < n; ++i) {

@@ -517,6 +517,7 @@ int owfd_wpa_ctrl_dispatch(struct owfd_wpa_ctrl *wpa, int timeout)
 		n = max;
 	}
 
+	r = 0;
 	for (i = 0; i < n; ++i) {
 		e = &ev[i];
 		if (e->data.ptr == &wpa->ev_fd)

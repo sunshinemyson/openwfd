@@ -122,6 +122,10 @@ static void print_ie(const void *data, size_t len)
 	}
 
 	col = NULL;
+	c = NULL;
+	sub = NULL;
+	sl = 0;
+
 	while (len > 0) {
 		ie = data;
 

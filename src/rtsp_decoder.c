@@ -456,7 +456,7 @@ static ssize_t feed_char_header_nl(struct owfd_rtsp_decoder *dec,
 
 static ssize_t feed_char(struct owfd_rtsp_decoder *dec, char ch, size_t rlen)
 {
-	ssize_t r;
+	ssize_t r = 0;
 
 	switch (dec->state) {
 	case STATE_NEW:
