@@ -200,10 +200,17 @@ static size_t sanitize_header_line(struct owfd_rtsp_decoder *dec,
 		if (quoted) {
 			if (prev == '\\' && !escaped) {
 				escaped = 1;
+				/* turn escaped binary zero into "\0" */
+				if (c == '\0')
+					c = '0';
 			} else {
 				escaped = 0;
-				if (c == '"')
+				if (c == '"') {
 					quoted = 0;
+				} else if (c == '\0') {
+					/* skip binary 0 */
+					continue;
+				}
 			}
 		} else {
 			/* ignore any binary 0 */
