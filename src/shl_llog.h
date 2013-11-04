@@ -55,6 +55,7 @@
 #ifndef SHL_LLOG_H
 #define SHL_LLOG_H
 
+#include <errno.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -233,5 +234,14 @@ void llog_dummyf(llog_submit_t llog, void *data, unsigned int sev,
 	((void)llog_ERRNO(obj))
 #define llog_vdERRNO(obj, data) \
 	((void)llog_dERRNO((obj), (data)))
+
+#define llog_dERR(obj, data, _r) \
+	(errno = -(_r), llog_derror((obj), (data), "syscall failed (%d): %m", (_r)), (_r))
+#define llog_ERR(obj, _r) \
+	(llog_dERR((obj)->llog, (obj)->llog_data, (_r)))
+#define llog_vERR(obj, _r) \
+	((void)llog_ERR((obj), (_r)))
+#define llog_vdERR(obj, data, _r) \
+	((void)llog_dERR((obj), (data), (_r)))
 
 #endif /* SHL_LLOG_H */

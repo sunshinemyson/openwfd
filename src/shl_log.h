@@ -16,6 +16,7 @@
 #ifndef SHL_LOG_H
 #define SHL_LOG_H
 
+#include <errno.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -186,5 +187,10 @@ extern const char *LOG_SUBSYSTEM;
 	(log_error("syscall failed (%d): %m", errno), -errno)
 #define log_vERRNO() \
 	((void)log_ERRNO())
+
+#define log_ERR(_r) \
+	(errno = -(_r), log_error("syscall failed (%d): %m", (_r)), (_r))
+#define log_vERR(_r) \
+	((void)log_ERR(_r))
 
 #endif /* SHL_LOG_H */
