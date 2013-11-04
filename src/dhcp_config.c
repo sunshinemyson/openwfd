@@ -24,6 +24,7 @@
  */
 
 #include <arpa/inet.h>
+#include <endian.h>
 #include <errno.h>
 #include <getopt.h>
 #include <netinet/in.h>
@@ -168,8 +169,11 @@ static int OOM(void)
 	return -ENOMEM;
 }
 
-static int verify_address(const char *argname, const char *argval)
+static int verify_address(const char *argname, const char *argval, bool ipv4)
 {
+	static const char prefix[] = { 0,    0,    0,    0,
+				       0,    0,    0,    0,
+				       0,    0, 0xff, 0xff };
 	int r;
 	struct in6_addr addr;
 
@@ -178,11 +182,48 @@ static int verify_address(const char *argname, const char *argval)
 		return -EINVAL;
 	}
 
+	memset(&addr, 0, sizeof(addr));
 	r = inet_pton(AF_INET6, argval, &addr);
 	if (r != 1) {
 		fprintf(stderr, "invalid IPv6 address for %s\n", argname);
 		return -EINVAL;
 	}
+
+	if (ipv4) {
+		if (memcmp(addr.s6_addr, prefix, sizeof(prefix))) {
+			fprintf(stderr,
+				"invalid IPv4-in-IPv6 address for %s\n",
+				argname);
+			return -EINVAL;
+		}
+	}
+
+	return 0;
+}
+
+static int make_ipv4(char **argval)
+{
+	struct in6_addr addr;
+	struct in_addr src;
+	char buf[INET_ADDRSTRLEN + 1], *str;
+
+	memset(&addr, 0, sizeof(addr));
+
+	/* already verified */
+	inet_pton(AF_INET6, *argval, &addr);
+	src.s_addr = htonl((addr.s6_addr[12] << 24) |
+			   (addr.s6_addr[13] << 16) |
+			   (addr.s6_addr[14] << 8) |
+			   (addr.s6_addr[15]));
+	inet_ntop(AF_INET, &src, buf, sizeof(buf));
+	buf[sizeof(buf) - 1] = 0;
+
+	str = strdup(buf);
+	if (!str)
+		return OOM();
+
+	free(*argval);
+	*argval = str;
 
 	return 0;
 }
@@ -356,22 +397,39 @@ int owfd_dhcp_parse_argv(struct owfd_dhcp_config *conf, int argc, char **argv)
 	}
 
 	if (conf->server) {
-		r = verify_address("--local", conf->local);
+		r = verify_address("--local", conf->local, conf->ipv4);
+		if (r >= 0 && conf->ipv4)
+			r = make_ipv4(&conf->local);
 		if (r < 0)
 			return r;
-		r = verify_address("--gateway", conf->gateway);
+
+		r = verify_address("--gateway", conf->gateway, conf->ipv4);
+		if (r >= 0 && conf->ipv4)
+			r = make_ipv4(&conf->gateway);
 		if (r < 0)
 			return r;
-		r = verify_address("--dns", conf->dns);
+
+		r = verify_address("--dns", conf->dns, conf->ipv4);
+		if (r >= 0 && conf->ipv4)
+			r = make_ipv4(&conf->dns);
 		if (r < 0)
 			return r;
-		r = verify_address("--subnet", conf->subnet);
+
+		r = verify_address("--subnet", conf->subnet, conf->ipv4);
+		if (r >= 0 && conf->ipv4)
+			r = make_ipv4(&conf->subnet);
 		if (r < 0)
 			return r;
-		r = verify_address("--ip-from", conf->ip_from);
+
+		r = verify_address("--ip-from", conf->ip_from, conf->ipv4);
+		if (r >= 0 && conf->ipv4)
+			r = make_ipv4(&conf->ip_from);
 		if (r < 0)
 			return r;
-		r = verify_address("--ip-to", conf->ip_to);
+
+		r = verify_address("--ip-to", conf->ip_to, conf->ipv4);
+		if (r >= 0 && conf->ipv4)
+			r = make_ipv4(&conf->ip_to);
 		if (r < 0)
 			return r;
 	}
