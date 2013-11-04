@@ -44,6 +44,7 @@
 struct owfd_dhcp {
 	struct owfd_dhcp_config config;
 	int ifindex;
+	char *iflabel;
 	GMainLoop *loop;
 
 	int sfd;
@@ -98,6 +99,8 @@ static void owfd_dhcp_teardown(struct owfd_dhcp *dhcp)
 
 	if (dhcp->loop)
 		g_main_loop_unref(dhcp->loop);
+
+	free(dhcp->iflabel);
 }
 
 static void sig_dummy(int sig)
@@ -126,6 +129,12 @@ static int owfd_dhcp_setup(struct owfd_dhcp *dhcp)
 		r = -EINVAL;
 		log_error("cannot find interface %s (%d)",
 			  dhcp->config.interface, dhcp->ifindex);
+		goto error;
+	}
+
+	r = asprintf(&dhcp->iflabel, "%s:openwfd", dhcp->config.interface);
+	if (r < 0) {
+		r = log_ERRNO();
 		goto error;
 	}
 
