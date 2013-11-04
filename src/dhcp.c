@@ -77,6 +77,8 @@ struct owfd_dhcp {
 
 	GDHCPClient *client;
 	char *client_addr;
+
+	GDHCPServer *server;
 };
 
 static int flush_if_addr(struct owfd_dhcp *dhcp)
@@ -337,6 +339,9 @@ static void owfd_dhcp_teardown(struct owfd_dhcp *dhcp)
 			g_dhcp_client_unref(dhcp->client);
 		}
 	} else {
+		if (dhcp->server) {
+			g_dhcp_server_unref(dhcp->server);
+		}
 	}
 
 	if (dhcp->sfd >= 0) {
@@ -369,6 +374,7 @@ static int owfd_dhcp_setup(struct owfd_dhcp *dhcp)
 	sigset_t mask;
 	struct sigaction sig;
 	GDHCPClientError cerr;
+	GDHCPServerError serr;
 
 	if (geteuid())
 		log_warning("not running as uid=0, dhcp might not work");
@@ -473,6 +479,45 @@ static int owfd_dhcp_setup(struct owfd_dhcp *dhcp)
 					     G_DHCP_CLIENT_EVENT_NO_LEASE,
 					     client_no_lease_fn, dhcp);
 	} else {
+		dhcp->server = g_dhcp_server_new(G_DHCP_IPV4, dhcp->ifindex,
+						 &serr);
+		if (!dhcp->server) {
+			r = -EINVAL;
+
+			switch(serr) {
+			case G_DHCP_SERVER_ERROR_INTERFACE_UNAVAILABLE:
+				log_error("cannot create GDHCP server: interface %s unavailable",
+					  dhcp->config.interface);
+				break;
+			case G_DHCP_SERVER_ERROR_INTERFACE_IN_USE:
+				log_error("cannot create GDHCP server: interface %s in use",
+					  dhcp->config.interface);
+				break;
+			case G_DHCP_SERVER_ERROR_INTERFACE_DOWN:
+				log_error("cannot create GDHCP server: interface %s down",
+					  dhcp->config.interface);
+				break;
+			case G_DHCP_SERVER_ERROR_NOMEM:
+				r = log_ENOMEM();
+				break;
+			case G_DHCP_SERVER_ERROR_INVALID_INDEX:
+				log_error("cannot create GDHCP server: invalid interface %s",
+					  dhcp->config.interface);
+				break;
+			case G_DHCP_SERVER_ERROR_INVALID_OPTION:
+				log_error("cannot create GDHCP server: invalid options");
+				break;
+			case G_DHCP_SERVER_ERROR_IP_ADDRESS_INVALID:
+				log_error("cannot create GDHCP server: invalid ip address");
+				break;
+			default:
+				log_error("cannot create GDHCP server (%d)",
+					  serr);
+				break;
+			}
+
+			goto error;
+		}
 	}
 
 	return 0;
