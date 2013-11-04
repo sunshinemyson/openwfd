@@ -42,6 +42,8 @@ struct owfd_dhcp_config {
 
 	unsigned int client : 1;
 	unsigned int server : 1;
+	unsigned int ipv4 : 1;
+	unsigned int ipv6 : 1;
 
 	char *interface;
 	char *ip_binary;

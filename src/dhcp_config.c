@@ -44,6 +44,8 @@ enum {
 
 	OPT_CLIENT,
 	OPT_SERVER,
+	OPT_IPV4,
+	OPT_IPV6,
 
 	OPT_INTERFACE,
 	OPT_IP_BINARY,
@@ -56,7 +58,7 @@ enum {
 	OPT_IP_TO,
 };
 
-const char short_options[] = ":hvcsi:";
+const char short_options[] = ":hvcs46i:";
 
 #define OPT(_name, _arg, _val) \
 	{ .name = _name, .has_arg = _arg, .val = LONG_OPT_OFFSET + _val }
@@ -68,6 +70,8 @@ const struct option long_options[] = {
 
 	OPT("client", 0, OPT_CLIENT),
 	OPT("server", 0, OPT_SERVER),
+	OPT("ipv4", 0, OPT_IPV4),
+	OPT("ipv6", 0, OPT_IPV6),
 
 	OPT("interface", 1, OPT_INTERFACE),
 	OPT("ip-binary", 1, OPT_IP_BINARY),
@@ -131,6 +135,8 @@ static void show_help(void)
 		"Modus Options:\n"
 		"\t-c, --client                [off]   Run as DHCP client\n"
 		"\t-s, --server                [off]   Run as DHCP server\n"
+		"\t-4, --ipv4                  [off]   Run via IPv4 DHCP\n"
+		"\t-6, --ipv6                  [off]   Run via IPv6 DHCP\n"
 		"\n"
 		"Network Options:\n"
 		"\t-i, --interface <wlan0>     []      Wireless interface to run on\n"
@@ -237,6 +243,16 @@ int owfd_dhcp_parse_argv(struct owfd_dhcp_config *conf, int argc, char **argv)
 			conf->client = 0;
 			conf->server = 1;
 			break;
+		case '4':
+		case OPT(OPT_IPV4):
+			conf->ipv6 = 0;
+			conf->ipv4 = 1;
+			break;
+		case '6':
+		case OPT(OPT_IPV6):
+			conf->ipv4 = 0;
+			conf->ipv6 = 1;
+			break;
 
 		case 'i':
 		case OPT(OPT_INTERFACE):
@@ -315,6 +331,16 @@ int owfd_dhcp_parse_argv(struct owfd_dhcp_config *conf, int argc, char **argv)
 	if (!conf->client && !conf->server) {
 		fprintf(stderr,
 			"no --client or --server given\n");
+		return -EINVAL;
+	}
+
+	if (!conf->ipv4 && !conf->ipv6) {
+		fprintf(stderr, "no --ipv4 or --ipv6 given\n");
+		return -EINVAL;
+	}
+
+	if (conf->ipv6) {
+		fprintf(stderr, "--ipv6 not implemented by gdhcp, yet\n");
 		return -EINVAL;
 	}
 
