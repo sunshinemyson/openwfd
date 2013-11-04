@@ -62,7 +62,8 @@ AM_LDFLAGS = \
 
 AM_CPPFLAGS += \
 	-DBUILD_ENABLE_DEBUG \
-	"-DBUILD_BINDIR_WPA_SUPPLICANT=\"/bin\""
+	"-DBUILD_BINDIR_WPA_SUPPLICANT=\"/bin\"" \
+	"-DBUILD_BINDIR_IP=\"/bin\""
 
 #
 # SHL - Static Helper Library
@@ -140,6 +141,27 @@ openwfd_p2pd_LDADD = \
 	libowfd.la \
 	libshl.la
 openwfd_p2pd_LDFLAGS = $(AM_LDFLAGS)
+
+#
+# openwfd_dhcp
+#
+
+bin_PROGRAMS += openwfd_dhcp
+
+openwfd_dhcp_SOURCES = \
+	src/dhcp.h \
+	src/dhcp.c \
+	src/dhcp_config.c
+
+openwfd_dhcp_CPPFLAGS = \
+	$(AM_CPPFLAGS) \
+	$(DHCP_CFLAGS)
+openwfd_dhcp_LDADD = \
+	$(DHCP_LIBS) \
+	libgdhcp.la \
+	libowfd.la \
+	libshl.la
+openwfd_dhcp_LDFLAGS = $(AM_LDFLAGS)
 
 #
 # Tools

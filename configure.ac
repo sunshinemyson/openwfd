@@ -45,6 +45,14 @@ AC_SUBST(GDHCP_CFLAGS)
 AC_SUBST(GDHCP_LIBS)
 
 #
+# Test for dhcp dependencies
+#
+
+PKG_CHECK_MODULES([DHCP], [glib-2.0])
+AC_SUBST(DHCP_CFLAGS)
+AC_SUBST(DHCP_LIBS)
+
+#
 # Test for "check" which we use for our test-suite. If not found, we disable
 # all tests.
 #

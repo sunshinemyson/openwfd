@@ -21,6 +21,7 @@ config.status
 configure
 libtool
 m4/
+openwfd_dhcp
 openwfd_ie
 openwfd_p2pd
 stamp-h1
