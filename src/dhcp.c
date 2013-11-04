@@ -106,8 +106,10 @@ static int flush_if_addr(struct owfd_dhcp *dhcp)
 		argv[i++] = "flush";
 		argv[i++] = "dev";
 		argv[i++] = dhcp->config.interface;
-		argv[i++] = "label";
-		argv[i++] = dhcp->iflabel;
+		if (dhcp->iflabel) {
+			argv[i++] = "label";
+			argv[i++] = dhcp->iflabel;
+		}
 		argv[i] = NULL;
 
 		execve(argv[0], argv, environ);
@@ -162,8 +164,10 @@ static int add_if_addr(struct owfd_dhcp *dhcp, char *addr)
 		argv[i++] = addr;
 		argv[i++] = "dev";
 		argv[i++] = dhcp->config.interface;
-		argv[i++] = "label";
-		argv[i++] = dhcp->iflabel;
+		if (dhcp->iflabel) {
+			argv[i++] = "label";
+			argv[i++] = dhcp->iflabel;
+		}
 		argv[i] = NULL;
 
 		execve(argv[0], argv, environ);
@@ -387,12 +391,6 @@ static int owfd_dhcp_setup(struct owfd_dhcp *dhcp)
 		goto error;
 	}
 
-	r = asprintf(&dhcp->iflabel, "%s:openwfd", dhcp->config.interface);
-	if (r < 0) {
-		r = log_ERRNO();
-		goto error;
-	}
-
 	dhcp->loop = g_main_loop_new(NULL, FALSE);
 
 	sigemptyset(&mask);
@@ -428,6 +426,13 @@ static int owfd_dhcp_setup(struct owfd_dhcp *dhcp)
 				      dhcp);
 
 	if (dhcp->config.client) {
+		r = asprintf(&dhcp->iflabel, "%s:openwfd",
+			     dhcp->config.interface);
+		if (r < 0) {
+			r = log_ERRNO();
+			goto error;
+		}
+
 		dhcp->client = g_dhcp_client_new(G_DHCP_IPV4, dhcp->ifindex,
 						 &cerr);
 		if (!dhcp->client) {
