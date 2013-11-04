@@ -118,6 +118,9 @@ static int owfd_dhcp_setup(struct owfd_dhcp *dhcp)
 	sigset_t mask;
 	struct sigaction sig;
 
+	if (geteuid())
+		log_warning("not running as uid=0, dhcp might not work");
+
 	dhcp->ifindex = if_name_to_index(dhcp->config.interface);
 	if (dhcp->ifindex < 0) {
 		r = -EINVAL;
