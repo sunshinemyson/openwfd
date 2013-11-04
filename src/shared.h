@@ -36,6 +36,7 @@ extern "C" {
 
 int64_t get_time_us(void);
 void us_to_timespec(struct timespec *ts, int64_t us);
+int if_name_to_index(const char *name);
 
 #ifdef __cplusplus
 }

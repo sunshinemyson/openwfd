@@ -25,11 +25,16 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/udp.h>
 #include <poll.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
 #include "shared.h"
@@ -50,4 +55,29 @@ void us_to_timespec(struct timespec *ts, int64_t us)
 {
 	ts->tv_sec = us / (1000LL * 1000LL);
 	ts->tv_nsec = (us % (1000LL * 1000LL)) * 1000LL;
+}
+
+int if_name_to_index(const char *name)
+{
+	struct ifreq ifr;
+	int fd, r;
+
+	if (strlen(name) > sizeof(ifr.ifr_name))
+		return -EINVAL;
+
+	fd = socket(PF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+	if (fd < 0)
+		return -errno;
+
+	memset(&ifr, 0, sizeof(ifr));
+	strncpy(ifr.ifr_name, name, sizeof(ifr.ifr_name));
+
+	r = ioctl(fd, SIOCGIFINDEX, &ifr);
+	if (r < 0)
+		r = -errno;
+	else
+		r = ifr.ifr_ifindex;
+
+	close(fd);
+	return r;
 }
