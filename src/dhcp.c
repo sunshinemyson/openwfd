@@ -79,6 +79,7 @@ struct owfd_dhcp {
 	char *client_addr;
 
 	GDHCPServer *server;
+	char *server_addr;
 };
 
 static int flush_if_addr(struct owfd_dhcp *dhcp)
@@ -276,6 +277,11 @@ static void client_no_lease_fn(GDHCPClient *client, gpointer data)
 	g_main_loop_quit(dhcp->loop);
 }
 
+static void server_log_fn(const char *str, void *data)
+{
+	log_format(NULL, 0, NULL, "gdhcp", LOG_DEBUG, "%s", str);
+}
+
 static gboolean owfd_dhcp_sfd_fn(GIOChannel *chan, GIOCondition mask,
 				 gpointer data)
 {
@@ -322,6 +328,12 @@ static int owfd_dhcp_run(struct owfd_dhcp *dhcp)
 	} else {
 		log_info("running dhcp server on %s via '%s'",
 			 dhcp->config.interface, dhcp->config.ip_binary);
+
+		r = g_dhcp_server_start(dhcp->server);
+		if (r != 0) {
+			log_error("cannot start DHCP server: %d", r);
+			return -EFAULT;
+		}
 	}
 
 	g_main_loop_run(dhcp->loop);
@@ -344,7 +356,14 @@ static void owfd_dhcp_teardown(struct owfd_dhcp *dhcp)
 		}
 	} else {
 		if (dhcp->server) {
+			g_dhcp_server_stop(dhcp->server);
+
 			g_dhcp_server_unref(dhcp->server);
+		}
+
+		if (dhcp->server_addr) {
+			flush_if_addr(dhcp);
+			free(dhcp->server_addr);
 		}
 	}
 
@@ -484,6 +503,28 @@ static int owfd_dhcp_setup(struct owfd_dhcp *dhcp)
 					     G_DHCP_CLIENT_EVENT_NO_LEASE,
 					     client_no_lease_fn, dhcp);
 	} else {
+		r = asprintf(&dhcp->server_addr, "%s/%s",
+			     dhcp->config.local,
+			     dhcp->config.subnet);
+		if (r < 0) {
+			r = log_ENOMEM();
+			goto error;
+		}
+
+		r = flush_if_addr(dhcp);
+		if (r < 0) {
+			log_error("cannot flush addr on local interface %s",
+				  dhcp->config.interface);
+			goto error;
+		}
+
+		r = add_if_addr(dhcp, dhcp->server_addr);
+		if (r < 0) {
+			log_error("cannot set parameters on local interface %s",
+				  dhcp->config.interface);
+			goto error;
+		}
+
 		dhcp->server = g_dhcp_server_new(G_DHCP_IPV4, dhcp->ifindex,
 						 &serr);
 		if (!dhcp->server) {
@@ -521,6 +562,38 @@ static int owfd_dhcp_setup(struct owfd_dhcp *dhcp)
 				break;
 			}
 
+			goto error;
+		}
+
+		g_dhcp_server_set_debug(dhcp->server, server_log_fn, NULL);
+		g_dhcp_server_set_lease_time(dhcp->server, 60 * 60);
+
+		r = g_dhcp_server_set_option(dhcp->server, G_DHCP_SUBNET,
+					     dhcp->config.subnet);
+		if (r != 0) {
+			log_vERR(r);
+			goto error;
+		}
+
+		r = g_dhcp_server_set_option(dhcp->server, G_DHCP_ROUTER,
+					     dhcp->config.gateway);
+		if (r != 0) {
+			log_vERR(r);
+			goto error;
+		}
+
+		r = g_dhcp_server_set_option(dhcp->server, G_DHCP_DNS_SERVER,
+					     dhcp->config.dns);
+		if (r != 0) {
+			log_vERR(r);
+			goto error;
+		}
+
+		r = g_dhcp_server_set_ip_range(dhcp->server,
+					       dhcp->config.ip_from,
+					       dhcp->config.ip_to);
+		if (r != 0) {
+			log_vERR(r);
 			goto error;
 		}
 	}
