@@ -38,10 +38,12 @@
 #include <unistd.h>
 #include "dhcp.h"
 #include "gdhcp/gdhcp.h"
+#include "shared.h"
 #include "shl_log.h"
 
 struct owfd_dhcp {
 	struct owfd_dhcp_config config;
+	int ifindex;
 	GMainLoop *loop;
 
 	int sfd;
@@ -115,6 +117,14 @@ static int owfd_dhcp_setup(struct owfd_dhcp *dhcp)
 	int r, i;
 	sigset_t mask;
 	struct sigaction sig;
+
+	dhcp->ifindex = if_name_to_index(dhcp->config.interface);
+	if (dhcp->ifindex < 0) {
+		r = -EINVAL;
+		log_error("cannot find interface %s (%d)",
+			  dhcp->config.interface, dhcp->ifindex);
+		goto error;
+	}
 
 	dhcp->loop = g_main_loop_new(NULL, FALSE);
 
