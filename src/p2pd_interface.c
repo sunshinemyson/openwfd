@@ -127,8 +127,10 @@ static int wait_for_wpa(struct owfd_p2pd_interface *iface,
 	w = inotify_add_watch(fd, iface->config->wpa_ctrldir,
 			      IN_CREATE | IN_MOVED_TO | IN_ONLYDIR);
 	if (w < 0) {
-		r = log_ERRNO();
-		goto err_close;
+		/* Ignore failure to watch directory. The directory might not
+		 * have been created, yet (neither it's parents). Avoid any
+		 * complexity to watch the parent-path and just poll for
+		 * changes below with a reasonable sleep-time. */
 	}
 
 	/* verify wpa_supplicant is still alive */
@@ -186,14 +188,14 @@ static int wait_for_wpa(struct owfd_p2pd_interface *iface,
 	}
 
 	/* remove directory watch */
-	inotify_rm_watch(fd, w);
+	if (w >= 0)
+		inotify_rm_watch(fd, w);
 
 	/* add socket watch */
 	w = inotify_add_watch(fd, file,
 			      IN_OPEN | IN_DELETE_SELF | IN_MOVE_SELF);
 	if (w < 0) {
-		r = log_ERRNO();
-		goto err_close;
+		/* see above why we can ignore this */
 	}
 
 	/* verify wpa_supplicant is still alive */
