@@ -37,9 +37,9 @@ static void parse(struct owfd_wpa_event *ev, const char *event)
 
 static const char *event_list[] = {
 	[OWFD_WPA_EVENT_UNKNOWN]			= "",
-	[OWFD_WPA_EVENT_AP_STA_CONNECTED]		= "AP-STA-CONNECTED",
-	[OWFD_WPA_EVENT_AP_STA_DISCONNECTED]		= "AP-STA-DISCONNECTED",
-	[OWFD_WPA_EVENT_P2P_DEVICE_FOUND]		= "P2P-DEVICE-FOUND",
+	[OWFD_WPA_EVENT_AP_STA_CONNECTED]		= "AP-STA-CONNECTED 00:00:00:00:00:00",
+	[OWFD_WPA_EVENT_AP_STA_DISCONNECTED]		= "AP-STA-DISCONNECTED 00:00:00:00:00:00",
+	[OWFD_WPA_EVENT_P2P_DEVICE_FOUND]		= "P2P-DEVICE-FOUND 00:00:00:00:00:00 name=some-name",
 	[OWFD_WPA_EVENT_P2P_GO_NEG_REQUEST]		= "P2P-GO-NEG-REQUEST",
 	[OWFD_WPA_EVENT_P2P_GO_NEG_SUCCESS]		= "P2P-GO-NEG-SUCCESS",
 	[OWFD_WPA_EVENT_P2P_GO_NEG_FAILURE]		= "P2P-GO-NEG-FAILURE",
@@ -47,10 +47,10 @@ static const char *event_list[] = {
 	[OWFD_WPA_EVENT_P2P_GROUP_FORMATION_FAILURE]	= "P2P-GROUP-FORMATION-FAILURE",
 	[OWFD_WPA_EVENT_P2P_GROUP_STARTED]		= "P2P-GROUP-STARTED",
 	[OWFD_WPA_EVENT_P2P_GROUP_REMOVED]		= "P2P-GROUP-REMOVED",
-	[OWFD_WPA_EVENT_P2P_PROV_DISC_SHOW_PIN]		= "P2P-PROV-DISC-SHOW-PIN",
-	[OWFD_WPA_EVENT_P2P_PROV_DISC_ENTER_PIN]	= "P2P-PROV-DISC-ENTER-PIN",
-	[OWFD_WPA_EVENT_P2P_PROV_DISC_PBC_REQ]		= "P2P-PROV-DISC-PBC-REQ",
-	[OWFD_WPA_EVENT_P2P_PROV_DISC_PBC_RESP]		= "P2P-PROV-DISC-PBC-RESP",
+	[OWFD_WPA_EVENT_P2P_PROV_DISC_SHOW_PIN]		= "P2P-PROV-DISC-SHOW-PIN 00:00:00:00:00:00 pin",
+	[OWFD_WPA_EVENT_P2P_PROV_DISC_ENTER_PIN]	= "P2P-PROV-DISC-ENTER-PIN 00:00:00:00:00:00",
+	[OWFD_WPA_EVENT_P2P_PROV_DISC_PBC_REQ]		= "P2P-PROV-DISC-PBC-REQ 00:00:00:00:00:00",
+	[OWFD_WPA_EVENT_P2P_PROV_DISC_PBC_RESP]		= "P2P-PROV-DISC-PBC-RESP 00:00:00:00:00:00",
 	[OWFD_WPA_EVENT_P2P_SERV_DISC_REQ]		= "P2P-SERV-DISC-REQ",
 	[OWFD_WPA_EVENT_P2P_SERV_DISC_RESP]		= "P2P-SERV-DISC-RESP",
 	[OWFD_WPA_EVENT_P2P_INVITATION_RECEIVED]	= "P2P-INVITATION-RECEIVED",
@@ -75,11 +75,11 @@ START_TEST(test_wpa_parser)
 		ck_assert_msg(ev.type == i, "event %d invalid", i);
 	}
 
-	parse(&ev, "<5>AP-STA-CONNECTED");
+	parse(&ev, "<5>AP-STA-CONNECTED 0:0:0:0:0:0");
 	ck_assert(ev.priority == OWFD_WPA_EVENT_P_MSGDUMP);
 	ck_assert(ev.type == OWFD_WPA_EVENT_AP_STA_CONNECTED);
 
-	parse(&ev, "<4>AP-STA-CONNECTED");
+	parse(&ev, "<4>AP-STA-CONNECTED 0:0:0:0:0:0");
 	ck_assert(ev.priority == OWFD_WPA_EVENT_P_ERROR);
 	ck_assert(ev.type == OWFD_WPA_EVENT_AP_STA_CONNECTED);
 
@@ -87,31 +87,54 @@ START_TEST(test_wpa_parser)
 	ck_assert(ev.priority == OWFD_WPA_EVENT_P_ERROR);
 	ck_assert(ev.type == OWFD_WPA_EVENT_UNKNOWN);
 
-	parse(&ev, "<4asdf>AP-STA-CONNECTED");
+	parse(&ev, "<4asdf>AP-STA-CONNECTED 0:0:0:0:0:0");
 	ck_assert(ev.priority == OWFD_WPA_EVENT_P_MSGDUMP);
 	ck_assert(ev.type == OWFD_WPA_EVENT_AP_STA_CONNECTED);
 
-	parse(&ev, "<4>AP-STA-CONNECTED something else");
+	parse(&ev, "<4>AP-STA-CONNECTED 0:0:0:0:0:0");
 	ck_assert(ev.priority == OWFD_WPA_EVENT_P_ERROR);
 	ck_assert(ev.type == OWFD_WPA_EVENT_AP_STA_CONNECTED);
 	ck_assert(ev.raw != NULL);
-	ck_assert(!strcmp(ev.raw, "something else"));
+	ck_assert(!strcmp(ev.raw, "0:0:0:0:0:0"));
 
 	parse(&ev, "<4>AP-STA something else");
 	ck_assert(ev.priority == OWFD_WPA_EVENT_P_ERROR);
 	ck_assert(ev.type == OWFD_WPA_EVENT_UNKNOWN);
 	ck_assert(!ev.raw);
+}
+END_TEST
 
-	parse(&ev, "<4>AP-STA-CONNECTED");
+START_TEST(test_wpa_parser_payload)
+{
+	struct owfd_wpa_event ev;
+
+	parse(&ev, "<4>P2P-DEVICE-FOUND 0:0:0:0:0:0 name=some-name");
 	ck_assert(ev.priority == OWFD_WPA_EVENT_P_ERROR);
-	ck_assert(ev.type == OWFD_WPA_EVENT_AP_STA_CONNECTED);
+	ck_assert(ev.type == OWFD_WPA_EVENT_P2P_DEVICE_FOUND);
 	ck_assert(ev.raw != NULL);
-	ck_assert(!*ev.raw);
+	ck_assert(!strcmp(ev.raw, "0:0:0:0:0:0 name=some-name"));
+	ck_assert(!strcmp(ev.p.p2p_device_found.peer_mac, "0:0:0:0:0:0"));
+	ck_assert(!strcmp(ev.p.p2p_device_found.name, "some-name"));
+
+	parse(&ev, "<4>P2P-DEVICE-FOUND 0:0:0:0:0:0 name=some-'name\\\\\\''");
+	ck_assert(ev.priority == OWFD_WPA_EVENT_P_ERROR);
+	ck_assert(ev.type == OWFD_WPA_EVENT_P2P_DEVICE_FOUND);
+	ck_assert(ev.raw != NULL);
+	ck_assert(!strcmp(ev.p.p2p_device_found.peer_mac, "0:0:0:0:0:0"));
+	ck_assert(!strcmp(ev.p.p2p_device_found.name, "some-name\\'"));
+
+	parse(&ev, "<4>P2P-PROV-DISC-SHOW-PIN 0:0:0:0:0:0 1234567890");
+	ck_assert(ev.priority == OWFD_WPA_EVENT_P_ERROR);
+	ck_assert(ev.type == OWFD_WPA_EVENT_P2P_PROV_DISC_SHOW_PIN);
+	ck_assert(ev.raw != NULL);
+	ck_assert(!strcmp(ev.p.p2p_prov_disc_show_pin.peer_mac, "0:0:0:0:0:0"));
+	ck_assert(!strcmp(ev.p.p2p_prov_disc_show_pin.pin, "1234567890"));
 }
 END_TEST
 
 TEST_DEFINE_CASE(parser)
 	TEST(test_wpa_parser)
+	TEST(test_wpa_parser_payload)
 TEST_END_CASE
 
 TEST_DEFINE(

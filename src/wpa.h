@@ -104,6 +104,32 @@ struct owfd_wpa_event {
 	unsigned int type;
 	unsigned int priority;
 	char *raw;
+
+	union owfd_wpa_event_payload {
+		struct owfd_wpa_event_ap_sta_connected {
+			char mac[OWFD_WPA_EVENT_MAC_STRLEN];
+		} ap_sta_connected;
+		struct owfd_wpa_event_ap_sta_disconnected {
+			char mac[OWFD_WPA_EVENT_MAC_STRLEN];
+		} ap_sta_disconnected;
+		struct owfd_wpa_event_p2p_device_found {
+			char peer_mac[OWFD_WPA_EVENT_MAC_STRLEN];
+			char *name;
+		} p2p_device_found;
+		struct owfd_wpa_event_p2p_prov_disc_show_pin {
+			char peer_mac[OWFD_WPA_EVENT_MAC_STRLEN];
+			char *pin;
+		} p2p_prov_disc_show_pin;
+		struct owfd_wpa_event_p2p_prov_disc_enter_pin {
+			char peer_mac[OWFD_WPA_EVENT_MAC_STRLEN];
+		} p2p_prov_disc_enter_pin;
+		struct owfd_wpa_event_p2p_prov_disc_pbc_req {
+			char peer_mac[OWFD_WPA_EVENT_MAC_STRLEN];
+		} p2p_prov_disc_pbc_req;
+		struct owfd_wpa_event_p2p_prov_disc_pbc_resp {
+			char peer_mac[OWFD_WPA_EVENT_MAC_STRLEN];
+		} p2p_prov_disc_pbc_resp;
+	} p;
 };
 
 void owfd_wpa_event_init(struct owfd_wpa_event *ev);
