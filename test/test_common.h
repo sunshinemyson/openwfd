@@ -46,6 +46,7 @@
 #include <string.h>
 #include "shared.h"
 #include "rtsp.h"
+#include "wpa.h"
 
 /* lower address-space is protected from user-allocation, so this is invalid */
 #define TEST_INVALID_PTR ((void*)0x10)

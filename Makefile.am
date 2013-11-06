@@ -119,7 +119,8 @@ libowfd_la_SOURCES = \
 	src/shared.h \
 	src/shared.c \
 	src/wpa.h \
-	src/wpa_ctrl.c
+	src/wpa_ctrl.c \
+	src/wpa_parser.c
 libowfd_la_CPPFLAGS = $(AM_CPPFLAGS)
 libowfd_la_LDFLAGS = $(AM_LDFLAGS)
 libowfd_la_LIBADD = $(AM_LIBADD)
@@ -179,11 +180,13 @@ openwfd_ie_LDFLAGS = $(AM_LDFLAGS)
 # Tests
 #
 
+tests = \
+	test_rtsp \
+	test_wpa
+
 if BUILD_HAVE_CHECK
-check_PROGRAMS += \
-	test_rtsp
-TESTS += \
-	test_rtsp
+check_PROGRAMS += $(tests)
+TESTS += $(tests)
 endif
 
 test_sources = \
@@ -202,6 +205,11 @@ test_rtsp_SOURCES = test/test_rtsp.c $(test_sources)
 test_rtsp_CPPFLAGS = $(test_cflags)
 test_rtsp_LDADD = $(test_libs)
 test_rtsp_LDFLAGS = $(test_lflags)
+
+test_wpa_SOURCES = test/test_wpa.c $(test_sources)
+test_wpa_CPPFLAGS = $(test_cflags)
+test_wpa_LDADD = $(test_libs)
+test_wpa_LDFLAGS = $(test_lflags)
 
 #
 # Phony targets

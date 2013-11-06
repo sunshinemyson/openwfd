@@ -34,6 +34,8 @@
 extern "C" {
 #endif
 
+/* wpa ctrl */
+
 struct owfd_wpa_ctrl;
 
 typedef void (*owfd_wpa_ctrl_cb) (struct owfd_wpa_ctrl *wpa, void *buf,
@@ -61,6 +63,52 @@ int owfd_wpa_ctrl_request(struct owfd_wpa_ctrl *wpa, const void *cmd,
 			  int timeout);
 int owfd_wpa_ctrl_request_ok(struct owfd_wpa_ctrl *wpa, const void *cmd,
 			     size_t cmd_len, int timeout);
+
+/* wpa parser */
+
+enum owfd_wpa_event_type {
+	OWFD_WPA_EVENT_UNKNOWN,
+	OWFD_WPA_EVENT_AP_STA_CONNECTED,
+	OWFD_WPA_EVENT_AP_STA_DISCONNECTED,
+	OWFD_WPA_EVENT_P2P_DEVICE_FOUND,
+	OWFD_WPA_EVENT_P2P_GO_NEG_REQUEST,
+	OWFD_WPA_EVENT_P2P_GO_NEG_SUCCESS,
+	OWFD_WPA_EVENT_P2P_GO_NEG_FAILURE,
+	OWFD_WPA_EVENT_P2P_GROUP_FORMATION_SUCCESS,
+	OWFD_WPA_EVENT_P2P_GROUP_FORMATION_FAILURE,
+	OWFD_WPA_EVENT_P2P_GROUP_STARTED,
+	OWFD_WPA_EVENT_P2P_GROUP_REMOVED,
+	OWFD_WPA_EVENT_P2P_PROV_DISC_SHOW_PIN,
+	OWFD_WPA_EVENT_P2P_PROV_DISC_ENTER_PIN,
+	OWFD_WPA_EVENT_P2P_PROV_DISC_PBC_REQ,
+	OWFD_WPA_EVENT_P2P_PROV_DISC_PBC_RESP,
+	OWFD_WPA_EVENT_P2P_SERV_DISC_REQ,
+	OWFD_WPA_EVENT_P2P_SERV_DISC_RESP,
+	OWFD_WPA_EVENT_P2P_INVITATION_RECEIVED,
+	OWFD_WPA_EVENT_P2P_INVITATION_RESULT,
+	OWFD_WPA_EVENT_COUNT,
+};
+
+enum owfd_wpa_event_priority {
+	OWFD_WPA_EVENT_P_MSGDUMP,
+	OWFD_WPA_EVENT_P_DEBUG,
+	OWFD_WPA_EVENT_P_INFO,
+	OWFD_WPA_EVENT_P_WARNING,
+	OWFD_WPA_EVENT_P_ERROR,
+	OWFD_WPA_EVENT_P_COUNT
+};
+
+#define OWFD_WPA_EVENT_MAC_STRLEN 18
+
+struct owfd_wpa_event {
+	unsigned int type;
+	unsigned int priority;
+	char *raw;
+};
+
+void owfd_wpa_event_init(struct owfd_wpa_event *ev);
+void owfd_wpa_event_reset(struct owfd_wpa_event *ev);
+int owfd_wpa_event_parse(struct owfd_wpa_event *ev, const char *event);
 
 #ifdef __cplusplus
 }
