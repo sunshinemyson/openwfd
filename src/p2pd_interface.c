@@ -412,7 +412,7 @@ int owfd_p2pd_interface_dispatch(struct owfd_p2pd_interface *iface,
 	if (r < 0)
 		return r;
 
-	return OWFD_P2PD_EP_HANDLED;;
+	return OWFD_P2PD_EP_HANDLED;
 }
 
 int owfd_p2pd_interface_dispatch_chld(struct owfd_p2pd_interface *iface,
