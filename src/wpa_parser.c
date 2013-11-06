@@ -177,7 +177,7 @@ static int parse_mac(char *buf, const char *src)
 	if (strlen(src) > 17)
 		return -EINVAL;
 
-	r = sscanf(src, "%2d:%2d:%2d:%2d:%2d:%2d",
+	r = sscanf(src, "%2x:%2x:%2x:%2x:%2x:%2x",
 		   &a1, &a2, &a3, &a4, &a5, &a6);
 	if (r != 6)
 		return -EINVAL;
