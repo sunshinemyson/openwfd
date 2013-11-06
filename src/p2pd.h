@@ -30,6 +30,7 @@
 #include <stdlib.h>
 #include <sys/epoll.h>
 #include <sys/signalfd.h>
+#include "wpa.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -74,6 +75,10 @@ void owfd_p2pd_ep_remove(int efd, int fd);
 
 struct owfd_p2pd_interface;
 
+typedef void (*owfd_p2pd_interface_event_fn) (struct owfd_p2pd_interface *ifc,
+					      struct owfd_wpa_event *ev,
+					      void *data);
+
 int owfd_p2pd_interface_new(struct owfd_p2pd_interface **out,
 			    struct owfd_p2pd_config *conf, int efd);
 void owfd_p2pd_interface_free(struct owfd_p2pd_interface *iface);
@@ -81,6 +86,13 @@ int owfd_p2pd_interface_dispatch(struct owfd_p2pd_interface *iface,
 				 struct owfd_p2pd_ep *ep);
 int owfd_p2pd_interface_dispatch_chld(struct owfd_p2pd_interface *iface,
 				      struct signalfd_siginfo *info);
+
+int owfd_p2pd_interface_register_event_fn(struct owfd_p2pd_interface *iface,
+					  owfd_p2pd_interface_event_fn event_fn,
+					  void *data);
+void owfd_p2pd_interface_unregister_event_fn(struct owfd_p2pd_interface *iface,
+					     owfd_p2pd_interface_event_fn event_fn,
+					     void *data);
 
 #ifdef __cplusplus
 }

@@ -38,14 +38,23 @@
 #include <unistd.h>
 #include "p2pd.h"
 #include "shared.h"
+#include "shl_dlist.h"
 #include "shl_log.h"
 #include "wpa.h"
+
+struct event_user {
+	struct shl_dlist list;
+	owfd_p2pd_interface_event_fn event_fn;
+	void *data;
+};
 
 struct owfd_p2pd_interface {
 	struct owfd_wpa_ctrl *wpa;
 	struct owfd_p2pd_config *config;
 	int wpa_fd;
 	pid_t pid;
+
+	struct shl_dlist event_users;
 };
 
 static int wpa_setup(struct owfd_p2pd_interface *iface);
@@ -360,6 +369,7 @@ int owfd_p2pd_interface_new(struct owfd_p2pd_interface **out,
 	if (!iface)
 		return log_ENOMEM();
 	iface->config = conf;
+	shl_dlist_init(&iface->event_users);
 
 	r = owfd_wpa_ctrl_new(&iface->wpa);
 	if (r < 0) {
@@ -367,6 +377,7 @@ int owfd_p2pd_interface_new(struct owfd_p2pd_interface **out,
 		log_vERRNO();
 		goto err_iface;
 	}
+	owfd_wpa_ctrl_set_data(iface->wpa, iface);
 
 	r = fork_wpa(iface);
 	if (r < 0)
@@ -391,8 +402,17 @@ err_iface:
 
 void owfd_p2pd_interface_free(struct owfd_p2pd_interface *iface)
 {
+	struct event_user *e;
+
 	if (!iface)
 		return;
+
+	while (!shl_dlist_empty(&iface->event_users)) {
+		e = shl_dlist_entry(shl_dlist_first(&iface->event_users),
+				    struct event_user, list);
+		shl_dlist_unlink(&e->list);
+		free(e);
+	}
 
 	kill_wpa(iface);
 	owfd_wpa_ctrl_close(iface->wpa);
@@ -427,6 +447,40 @@ int owfd_p2pd_interface_dispatch_chld(struct owfd_p2pd_interface *iface,
 	iface->pid = 0;
 
 	return OWFD_P2PD_EP_QUIT;
+}
+
+int owfd_p2pd_interface_register_event_fn(struct owfd_p2pd_interface *iface,
+					  owfd_p2pd_interface_event_fn event_fn,
+					  void *data)
+{
+	struct event_user *e;
+
+	e = calloc(1, sizeof(*e));
+	if (!e)
+		return -ENOMEM;
+
+	e->event_fn = event_fn;
+	e->data = data;
+
+	shl_dlist_link(&iface->event_users, &e->list);
+	return 0;
+}
+
+void owfd_p2pd_interface_unregister_event_fn(struct owfd_p2pd_interface *iface,
+					     owfd_p2pd_interface_event_fn event_fn,
+					     void *data)
+{
+	struct shl_dlist *i;
+	struct event_user *e;
+
+	shl_dlist_for_each(i, &iface->event_users) {
+		e = shl_dlist_entry(i, struct event_user, list);
+		if (e->event_fn == event_fn && e->data == data) {
+			shl_dlist_unlink(&e->list);
+			free(e);
+			return;
+		}
+	}
 }
 
 static int wpa_request_ok(struct owfd_p2pd_interface *iface, const char *req)
@@ -478,6 +532,9 @@ err_notsupp:
 static void wpa_event(struct owfd_wpa_ctrl *wpa, void *buf,
 		      size_t len, void *data)
 {
+	struct owfd_p2pd_interface *iface = data;
+	struct shl_dlist *i, *t;
+	struct event_user *e;
 	struct owfd_wpa_event ev;
 	int r;
 
@@ -492,6 +549,12 @@ static void wpa_event(struct owfd_wpa_ctrl *wpa, void *buf,
 	} else {
 		log_debug("wpa-event (%d:%s): %s",
 			  ev.type, owfd_wpa_event_name(ev.type), ev.raw);
+
+		shl_dlist_for_each_safe(i, t, &iface->event_users) {
+			e = shl_dlist_entry(i, struct event_user, list);
+			if (e->event_fn)
+				e->event_fn(iface, &ev, e->data);
+		}
 	}
 
 	owfd_wpa_event_reset(&ev);
