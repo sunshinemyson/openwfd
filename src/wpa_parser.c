@@ -253,10 +253,10 @@ static int parse_p2p_device_found(struct owfd_wpa_event *ev,
 		if (!ev->p.p2p_device_found.name)
 			return -ENOMEM;
 
-		break;
+		return 0;
 	}
 
-	return 0;
+	return -EINVAL;
 }
 
 static int parse_p2p_prov_disc_show_pin(struct owfd_wpa_event *ev,
