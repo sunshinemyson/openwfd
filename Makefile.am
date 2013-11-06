@@ -136,6 +136,7 @@ openwfd_p2pd_SOURCES = \
 	src/p2pd.h \
 	src/p2pd.c \
 	src/p2pd_config.c \
+	src/p2pd_dummy.c \
 	src/p2pd_interface.c
 
 openwfd_p2pd_CPPFLAGS = $(AM_CPPFLAGS)

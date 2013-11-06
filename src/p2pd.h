@@ -94,6 +94,15 @@ void owfd_p2pd_interface_unregister_event_fn(struct owfd_p2pd_interface *iface,
 					     owfd_p2pd_interface_event_fn event_fn,
 					     void *data);
 
+/* dummy */
+
+struct owfd_p2pd_dummy;
+
+int owfd_p2pd_dummy_new(struct owfd_p2pd_dummy **out,
+			struct owfd_p2pd_config *config,
+			struct owfd_p2pd_interface *iface);
+void owfd_p2pd_dummy_free(struct owfd_p2pd_dummy *dummy);
+
 #ifdef __cplusplus
 }
 #endif

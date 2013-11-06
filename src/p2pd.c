@@ -41,6 +41,7 @@ struct owfd_p2pd {
 	int sfd;
 
 	struct owfd_p2pd_interface *interface;
+	struct owfd_p2pd_dummy *dummy;
 };
 
 int owfd_p2pd_ep_add(int efd, int *fd, unsigned int events)
@@ -185,6 +186,7 @@ static int owfd_p2pd_run(struct owfd_p2pd *p2pd)
 
 static void owfd_p2pd_teardown(struct owfd_p2pd *p2pd)
 {
+	owfd_p2pd_dummy_free(p2pd->dummy);
 	owfd_p2pd_interface_free(p2pd->interface);
 
 	if (p2pd->sfd >= 0)
@@ -250,6 +252,10 @@ static int owfd_p2pd_setup(struct owfd_p2pd *p2pd)
 
 	r = owfd_p2pd_interface_new(&p2pd->interface, &p2pd->config,
 				    p2pd->efd);
+	if (r < 0)
+		goto error;
+
+	r = owfd_p2pd_dummy_new(&p2pd->dummy, &p2pd->config, p2pd->interface);
 	if (r < 0)
 		goto error;
 
