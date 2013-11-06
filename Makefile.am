@@ -73,6 +73,7 @@ AM_CPPFLAGS += \
 noinst_LTLIBRARIES += libshl.la
 
 libshl_la_SOURCES = \
+	src/shl_dlist.h \
 	src/shl_llog.h \
 	src/shl_log.h \
 	src/shl_log.c \
