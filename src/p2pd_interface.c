@@ -39,7 +39,7 @@
 #include "p2pd.h"
 #include "shared.h"
 #include "shl_log.h"
-#include "wpa_ctrl.h"
+#include "wpa.h"
 
 struct owfd_p2pd_interface {
 	struct owfd_wpa_ctrl *wpa;

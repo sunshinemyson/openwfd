@@ -23,8 +23,8 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef OWFD_WPA_CTRL_H
-#define OWFD_WPA_CTRL_H
+#ifndef OWFD_WPA_H
+#define OWFD_WPA_H
 
 #include <signal.h>
 #include <stdbool.h>
@@ -66,4 +66,4 @@ int owfd_wpa_ctrl_request_ok(struct owfd_wpa_ctrl *wpa, const void *cmd,
 }
 #endif
 
-#endif /* OWFD_WPA_CTRL_H */
+#endif /* OWFD_WPA_H */

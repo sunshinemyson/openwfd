@@ -118,7 +118,7 @@ libowfd_la_SOURCES = \
 	src/rtsp_tokenizer.c \
 	src/shared.h \
 	src/shared.c \
-	src/wpa_ctrl.h \
+	src/wpa.h \
 	src/wpa_ctrl.c
 libowfd_la_CPPFLAGS = $(AM_CPPFLAGS)
 libowfd_la_LDFLAGS = $(AM_LDFLAGS)

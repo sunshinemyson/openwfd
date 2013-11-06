@@ -34,7 +34,6 @@
 #include <unistd.h>
 #include "p2pd.h"
 #include "shl_log.h"
-#include "wpa_ctrl.h"
 
 struct owfd_p2pd {
 	struct owfd_p2pd_config config;

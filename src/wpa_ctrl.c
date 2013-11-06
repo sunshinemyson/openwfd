@@ -39,7 +39,7 @@
 #include <time.h>
 #include <unistd.h>
 #include "shared.h"
-#include "wpa_ctrl.h"
+#include "wpa.h"
 
 #define CTRL_PATH_TEMPLATE "/tmp/openwfd-wpa-ctrl-%d-%lu-XXXXXX"
 #define REQ_REPLY_MAX 512
