@@ -135,6 +135,7 @@ struct owfd_wpa_event {
 void owfd_wpa_event_init(struct owfd_wpa_event *ev);
 void owfd_wpa_event_reset(struct owfd_wpa_event *ev);
 int owfd_wpa_event_parse(struct owfd_wpa_event *ev, const char *event);
+const char *owfd_wpa_event_name(unsigned int type);
 
 #ifdef __cplusplus
 }

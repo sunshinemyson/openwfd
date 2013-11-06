@@ -89,6 +89,20 @@ static const struct event_type {
 #undef EVENT
 };
 
+const char *owfd_wpa_event_name(unsigned int type)
+{
+	size_t i, max;
+
+	max = sizeof(event_list) / sizeof(*event_list);
+
+	for (i = 0; i < max; ++i) {
+		if (event_list[i].code == type)
+			return event_list[i].name;
+	}
+
+	return "UNKNOWN";
+}
+
 static int event_comp(const void *key, const void *type)
 {
 	const struct event_type *t;
