@@ -495,6 +495,29 @@ static int wpa_request(struct owfd_p2pd_interface *iface, const char *req,
 				     buf, len, -1);
 }
 
+int owfd_p2pd_interface_connect(struct owfd_p2pd_interface *iface,
+				const char *peer_mac,
+				const char *pin,
+				const char *pin_mode)
+{
+	char *req;
+	int r;
+
+	if (pin_mode)
+		r = asprintf(&req, "P2P_CONNECT %s %s %s",
+			     peer_mac, pin, pin_mode);
+	else
+		r = asprintf(&req, "P2P_CONNECT %s %s",
+			     peer_mac, pin);
+
+	if (r < 0)
+		return -ENOMEM;
+
+	r = wpa_request_ok(iface, req);
+	free(req);
+	return r;
+}
+
 static int wpa_setup(struct owfd_p2pd_interface *iface)
 {
 	int r;

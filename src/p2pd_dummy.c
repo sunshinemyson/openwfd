@@ -51,6 +51,24 @@ static void dummy_event_fn(struct owfd_p2pd_interface *iface,
 			   void *data)
 {
 	struct owfd_p2pd_dummy *dummy = data;
+	int r;
+
+	switch (ev->type) {
+	case OWFD_WPA_EVENT_P2P_PROV_DISC_SHOW_PIN:
+		r = owfd_p2pd_interface_connect(dummy->iface,
+					ev->p.p2p_prov_disc_show_pin.peer_mac,
+					ev->p.p2p_prov_disc_show_pin.pin,
+					"display");
+		if (r < 0) {
+			log_error("cannot acknowledge SHOW-PIN with connect: %d",
+				  r);
+			return;
+		}
+
+		log_info("P2P SHOW-PIN acknowledged with connect");
+
+		break;
+	}
 }
 
 int owfd_p2pd_dummy_new(struct owfd_p2pd_dummy **out,

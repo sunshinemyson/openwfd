@@ -94,6 +94,11 @@ void owfd_p2pd_interface_unregister_event_fn(struct owfd_p2pd_interface *iface,
 					     owfd_p2pd_interface_event_fn event_fn,
 					     void *data);
 
+int owfd_p2pd_interface_connect(struct owfd_p2pd_interface *iface,
+				const char *peer_mac,
+				const char *pin,
+				const char *pin_mode);
+
 /* dummy */
 
 struct owfd_p2pd_dummy;
