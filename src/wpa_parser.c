@@ -43,6 +43,9 @@ void owfd_wpa_event_reset(struct owfd_wpa_event *ev)
 	case OWFD_WPA_EVENT_P2P_DEVICE_FOUND:
 		free(ev->p.p2p_device_found.name);
 		break;
+	case OWFD_WPA_EVENT_P2P_GROUP_STARTED:
+		free(ev->p.p2p_group_started.ifname);
+		break;
 	case OWFD_WPA_EVENT_P2P_PROV_DISC_SHOW_PIN:
 		free(ev->p.p2p_prov_disc_show_pin.pin);
 		break;
@@ -259,6 +262,77 @@ static int parse_p2p_device_found(struct owfd_wpa_event *ev,
 	return -EINVAL;
 }
 
+static int parse_p2p_go_neg_success(struct owfd_wpa_event *ev,
+				    char *tokens, size_t num)
+{
+	int r;
+	size_t i;
+	bool has_role = false, has_peer = false;
+
+	if (num < 2)
+		return -EINVAL;
+
+	for (i = 0; i < num; ++i, tokens += strlen(tokens) + 1) {
+		if (!strncmp(tokens, "role=", 5)) {
+			if (!strcmp(&tokens[5], "GO"))
+				ev->p.p2p_go_neg_success.role = OWFD_WPA_EVENT_ROLE_GO;
+			else if (!strcmp(&tokens[5], "client"))
+				ev->p.p2p_go_neg_success.role = OWFD_WPA_EVENT_ROLE_CLIENT;
+			else
+				return -EINVAL;
+
+			has_role = true;
+		} else if (!strncmp(tokens, "peer_dev=", 9)) {
+			r = parse_mac(ev->p.p2p_go_neg_success.peer_mac,
+				      &tokens[9]);
+			if (r < 0)
+				return r;
+
+			has_peer = true;
+		}
+	}
+
+	return (has_role && has_peer) ? 0 : -EINVAL;
+}
+
+static int parse_p2p_group_started(struct owfd_wpa_event *ev,
+				   char *tokens, size_t num)
+{
+	int r;
+	size_t i;
+
+	if (num < 3)
+		return -EINVAL;
+
+	ev->p.p2p_group_started.ifname = strdup(tokens);
+	if (!ev->p.p2p_group_started.ifname)
+		return -ENOMEM;
+
+	tokens += strlen(tokens) + 1;
+
+	if (!strcmp(tokens, "GO"))
+		ev->p.p2p_group_started.role = OWFD_WPA_EVENT_ROLE_GO;
+	else if (!strcmp(tokens, "client"))
+		ev->p.p2p_group_started.role = OWFD_WPA_EVENT_ROLE_CLIENT;
+	else
+		return -EINVAL;
+
+	tokens += strlen(tokens) + 1;
+
+	for (i = 2; i < num; ++i, tokens += strlen(tokens) + 1) {
+		if (strncmp(tokens, "go_dev_addr=", 12))
+			continue;
+
+		r = parse_mac(ev->p.p2p_group_started.go_mac, &tokens[12]);
+		if (r < 0)
+			return r;
+
+		return 0;
+	}
+
+	return -EINVAL;
+}
+
 static int parse_p2p_prov_disc_show_pin(struct owfd_wpa_event *ev,
 					char *tokens, size_t num)
 {
@@ -384,6 +458,12 @@ int owfd_wpa_event_parse(struct owfd_wpa_event *ev, const char *event)
 		break;
 	case OWFD_WPA_EVENT_P2P_DEVICE_FOUND:
 		r = parse_p2p_device_found(ev, tokens, num);
+		break;
+	case OWFD_WPA_EVENT_P2P_GO_NEG_SUCCESS:
+		r = parse_p2p_go_neg_success(ev, tokens, num);
+		break;
+	case OWFD_WPA_EVENT_P2P_GROUP_STARTED:
+		r = parse_p2p_group_started(ev, tokens, num);
 		break;
 	case OWFD_WPA_EVENT_P2P_PROV_DISC_SHOW_PIN:
 		r = parse_p2p_prov_disc_show_pin(ev, tokens, num);

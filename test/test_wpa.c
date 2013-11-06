@@ -31,7 +31,7 @@ static void parse(struct owfd_wpa_event *ev, const char *event)
 
 	owfd_wpa_event_init(ev);
 	r = owfd_wpa_event_parse(ev, event);
-	ck_assert(!r);
+	ck_assert_msg(!r, "cannot parse event %s", event);
 	ck_assert(ev->priority < OWFD_WPA_EVENT_P_COUNT);
 }
 
@@ -42,11 +42,11 @@ static const char *event_list[] = {
 	[OWFD_WPA_EVENT_P2P_DEVICE_FOUND]		= "P2P-DEVICE-FOUND 00:00:00:00:00:00 name=some-name",
 	[OWFD_WPA_EVENT_P2P_FIND_STOPPED]		= "P2P-FIND-STOPPED",
 	[OWFD_WPA_EVENT_P2P_GO_NEG_REQUEST]		= "P2P-GO-NEG-REQUEST",
-	[OWFD_WPA_EVENT_P2P_GO_NEG_SUCCESS]		= "P2P-GO-NEG-SUCCESS",
+	[OWFD_WPA_EVENT_P2P_GO_NEG_SUCCESS]		= "P2P-GO-NEG-SUCCESS role=GO peer_dev=00:00:00:00:00:00",
 	[OWFD_WPA_EVENT_P2P_GO_NEG_FAILURE]		= "P2P-GO-NEG-FAILURE",
 	[OWFD_WPA_EVENT_P2P_GROUP_FORMATION_SUCCESS]	= "P2P-GROUP-FORMATION-SUCCESS",
 	[OWFD_WPA_EVENT_P2P_GROUP_FORMATION_FAILURE]	= "P2P-GROUP-FORMATION-FAILURE",
-	[OWFD_WPA_EVENT_P2P_GROUP_STARTED]		= "P2P-GROUP-STARTED",
+	[OWFD_WPA_EVENT_P2P_GROUP_STARTED]		= "P2P-GROUP-STARTED p2p-wlan0-0 client go_dev_addr=00:00:00:00:00:00",
 	[OWFD_WPA_EVENT_P2P_GROUP_REMOVED]		= "P2P-GROUP-REMOVED",
 	[OWFD_WPA_EVENT_P2P_PROV_DISC_SHOW_PIN]		= "P2P-PROV-DISC-SHOW-PIN 00:00:00:00:00:00 pin",
 	[OWFD_WPA_EVENT_P2P_PROV_DISC_ENTER_PIN]	= "P2P-PROV-DISC-ENTER-PIN 00:00:00:00:00:00",
@@ -130,6 +130,21 @@ START_TEST(test_wpa_parser_payload)
 	ck_assert(ev.raw != NULL);
 	ck_assert(!strcmp(ev.p.p2p_prov_disc_show_pin.peer_mac, "0:0:0:0:0:0"));
 	ck_assert(!strcmp(ev.p.p2p_prov_disc_show_pin.pin, "1234567890"));
+
+	parse(&ev, "<4>P2P-GO-NEG-SUCCESS role=GO peer_dev=0:0:0:0:0:0");
+	ck_assert(ev.priority == OWFD_WPA_EVENT_P_ERROR);
+	ck_assert(ev.type == OWFD_WPA_EVENT_P2P_GO_NEG_SUCCESS);
+	ck_assert(ev.raw != NULL);
+	ck_assert(!strcmp(ev.p.p2p_go_neg_success.peer_mac, "0:0:0:0:0:0"));
+	ck_assert(ev.p.p2p_go_neg_success.role == OWFD_WPA_EVENT_ROLE_GO);
+
+	parse(&ev, "<4>P2P-GROUP-STARTED p2p-wlan0-0 client go_dev_addr=0:0:0:0:0:0");
+	ck_assert(ev.priority == OWFD_WPA_EVENT_P_ERROR);
+	ck_assert(ev.type == OWFD_WPA_EVENT_P2P_GROUP_STARTED);
+	ck_assert(ev.raw != NULL);
+	ck_assert(!strcmp(ev.p.p2p_group_started.go_mac, "0:0:0:0:0:0"));
+	ck_assert(!strcmp(ev.p.p2p_group_started.ifname, "p2p-wlan0-0"));
+	ck_assert(ev.p.p2p_group_started.role == OWFD_WPA_EVENT_ROLE_CLIENT);
 }
 END_TEST
 

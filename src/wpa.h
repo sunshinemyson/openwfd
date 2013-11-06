@@ -99,6 +99,11 @@ enum owfd_wpa_event_priority {
 	OWFD_WPA_EVENT_P_COUNT
 };
 
+enum owfd_wpa_event_role {
+	OWFD_WPA_EVENT_ROLE_GO,
+	OWFD_WPA_EVENT_ROLE_CLIENT,
+};
+
 #define OWFD_WPA_EVENT_MAC_STRLEN 18
 
 struct owfd_wpa_event {
@@ -117,6 +122,15 @@ struct owfd_wpa_event {
 			char peer_mac[OWFD_WPA_EVENT_MAC_STRLEN];
 			char *name;
 		} p2p_device_found;
+		struct owfd_wpa_event_p2p_go_neg_success {
+			char peer_mac[OWFD_WPA_EVENT_MAC_STRLEN];
+			unsigned int role;
+		} p2p_go_neg_success;
+		struct owfd_wpa_event_p2p_group_started {
+			char go_mac[OWFD_WPA_EVENT_MAC_STRLEN];
+			unsigned int role;
+			char *ifname;
+		} p2p_group_started;
 		struct owfd_wpa_event_p2p_prov_disc_show_pin {
 			char peer_mac[OWFD_WPA_EVENT_MAC_STRLEN];
 			char *pin;
