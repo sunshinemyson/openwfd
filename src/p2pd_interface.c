@@ -478,4 +478,21 @@ err_notsupp:
 static void wpa_event(struct owfd_wpa_ctrl *wpa, void *buf,
 		      size_t len, void *data)
 {
+	struct owfd_wpa_event ev;
+	int r;
+
+	owfd_wpa_event_init(&ev);
+
+	r = owfd_wpa_event_parse(&ev, buf);
+	if (r < 0) {
+		log_warning("cannot parse wpa-event (%d): %s",
+			    r, (char*)buf);
+	} else if (ev.type == OWFD_WPA_EVENT_UNKNOWN) {
+		log_debug("unknown wpa-event: %s", (char*)buf);
+	} else {
+		log_debug("wpa-event (%d:%s): %s",
+			  ev.type, owfd_wpa_event_name(ev.type), ev.raw);
+	}
+
+	owfd_wpa_event_reset(&ev);
 }
